@@ -50,6 +50,7 @@ def YCbCr_convert(bgr):
 def BGR2YCbCr(img_tiles):
     # perform conversion for each pixel
     Y_img = []
+    # I know this looks bad but it's only O(n^2)!
     for row in range(ver_block_count):
         Y_tiles = []
         for column in range(hor_block_count):
