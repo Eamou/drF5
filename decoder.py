@@ -297,6 +297,83 @@ def unDPCM(zz_img):
         zz_img[dc_count][0] = cur_dc_val
     return zz_img
 
+def unZigZag(zz_img):
+    img_tiles = []
+    block_row = []
+    for zz_array in zz_img:
+        if len(block_row) == 8:
+            block_row = np.array(block_row)
+            img_tiles.append(block_row)
+            block_row = []
+        out_block = np.zeros((8,8))
+        out_block[0][0] = zz_array[0]
+        out_block[0][1] = zz_array[1]
+        out_block[1][0] = zz_array[2]
+        out_block[2][0] = zz_array[3]
+        out_block[1][1] = zz_array[4]
+        out_block[0][2] = zz_array[5]
+        out_block[0][3] = zz_array[6]
+        out_block[1][2] = zz_array[7]
+        out_block[2][1] = zz_array[8]
+        out_block[3][0] = zz_array[9]
+        out_block[4][0] = zz_array[10]
+        out_block[3][1] = zz_array[11]
+        out_block[2][2] = zz_array[12]
+        out_block[1][3] = zz_array[13]
+        out_block[0][4] = zz_array[14]
+        out_block[0][5] = zz_array[15]
+        out_block[1][4] = zz_array[16]
+        out_block[2][3] = zz_array[17]
+        out_block[3][2] = zz_array[18]
+        out_block[4][1] = zz_array[19]
+        out_block[5][0] = zz_array[20]
+        out_block[6][0] = zz_array[21]
+        out_block[5][1] = zz_array[22]
+        out_block[4][2] = zz_array[23]
+        out_block[3][3] = zz_array[24]
+        out_block[2][4] = zz_array[25]
+        out_block[1][5] = zz_array[26]
+        out_block[0][6] = zz_array[27]
+        out_block[0][7] = zz_array[28]
+        out_block[1][6] = zz_array[29]
+        out_block[2][5] = zz_array[30]
+        out_block[3][4] = zz_array[31]
+        out_block[4][3] = zz_array[32]
+        out_block[5][2] = zz_array[33]
+        out_block[6][1] = zz_array[34]
+        out_block[7][0] = zz_array[35]
+        out_block[7][1] = zz_array[36]
+        out_block[6][2] = zz_array[37]
+        out_block[5][3] = zz_array[38]
+        out_block[4][4] = zz_array[39]
+        out_block[3][5] = zz_array[40]
+        out_block[2][6] = zz_array[41]
+        out_block[1][7] = zz_array[42]
+        out_block[2][7] = zz_array[43]
+        out_block[3][6] = zz_array[44]
+        out_block[4][5] = zz_array[45]
+        out_block[5][4] = zz_array[46]
+        out_block[6][3] = zz_array[47]
+        out_block[7][2] = zz_array[48]
+        out_block[7][3] = zz_array[49]
+        out_block[6][4] = zz_array[50]
+        out_block[5][5] = zz_array[51]
+        out_block[4][6] = zz_array[52]
+        out_block[3][7] = zz_array[53]
+        out_block[4][7] = zz_array[54]
+        out_block[5][6] = zz_array[55]
+        out_block[6][5] = zz_array[56]
+        out_block[7][4] = zz_array[57]
+        out_block[7][5] = zz_array[58]
+        out_block[6][6] = zz_array[59]
+        out_block[5][7] = zz_array[60]
+        out_block[6][7] = zz_array[61]
+        out_block[7][6] = zz_array[62]
+        out_block[7][7] = zz_array[63]
+        block_row.append(out_block)
+    img_tiles = np.array(img_tiles)
+    return img_tiles
+
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
@@ -312,3 +389,6 @@ zz_img = unZigZag(decoded_img)
 
 # restore DC values from DPCM
 zz_img = unDPCM(zz_img)
+
+# transform 64-len zigzag array to 8x8 tile
+img_tiles = unZigZag(zz_img)
