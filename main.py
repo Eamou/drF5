@@ -48,6 +48,8 @@ dc_codeword_dict = {
         11: '111111110'
     }
 
+dc_codeword_dict_inv = {codeword: cat for cat, codeword in dc_codeword_dict.items()}
+
 ac_codeword_dict = {
     (0,0): '1010',
     (0,1): '00',
@@ -212,6 +214,8 @@ ac_codeword_dict = {
     (15,10): '1111111111111110',
     (15,0): '11111111001'
 }
+
+ac_codeword_dict_inv = {codeword: cat for cat, codeword in ac_codeword_dict.items()}
 
 def readImage(image_name):
     # return image object img
@@ -482,33 +486,33 @@ def categorize(coef):
         return 0
     elif coef == -1 or coef == 1:
         return 1
-    elif coef in range(-3,-2) or coef in range(2,3):
+    elif coef in range(-3,-1) or coef in range(2,4):
         return 2
-    elif coef in range(-7,-4) or coef in range(4,7):
+    elif coef in range(-7,-3) or coef in range(4,8):
         return 3
-    elif coef in range(-15,-8) or coef in range(8,15):
+    elif coef in range(-15,-7) or coef in range(8,16):
         return 4
-    elif coef in range(-31,-16) or coef in range(16,31):
+    elif coef in range(-31,-15) or coef in range(16,32):
         return 5
-    elif coef in range(-63,-32) or coef in range(32,63):
+    elif coef in range(-63,-31) or coef in range(32,64):
         return 6
-    elif coef in range(-127,-64) or coef in range(64,127):
+    elif coef in range(-127,-63) or coef in range(64,128):
         return 7
-    elif coef in range(-255,-128) or coef in range(128,255):
+    elif coef in range(-255,-127) or coef in range(128,256):
         return 8
-    elif coef in range(-511,-256) or coef in range(256,511):
+    elif coef in range(-511,-255) or coef in range(256,512):
         return 9
-    elif coef in range(-1023,-512) or coef in range(512,1023):
+    elif coef in range(-1023,-511) or coef in range(512,1024):
         return 10
-    elif coef in range(-2047,-1024) or coef in range(1024,2047):
+    elif coef in range(-2047,-1023) or coef in range(1024,2048):
         return 11
-    elif coef in range(-4095,-2048) or coef in range(2048, 4095):
+    elif coef in range(-4095,-2047) or coef in range(2048, 4096):
         return 12
-    elif coef in range(-8191,-4096) or coef in range(4096, 8191):
+    elif coef in range(-8191,-4095) or coef in range(4096, 8192):
         return 13
-    elif coef in range(-16383,-8192) or coef in range(8192,16383):
+    elif coef in range(-16383,-8191) or coef in range(8192,16384):
         return 14
-    elif coef in range(-32767,-16384) or coef in range(16384,32767):
+    elif coef in range(-32767,-16383) or coef in range(16384,32768):
         return 15
     elif coef == 32768:
         return 16
@@ -535,8 +539,8 @@ def huffman(dc_arr, ac_arr):
         dc_category = categorize(dc_arr[index])
         dc_codeword = dc_codeword_dict[dc_category]
         # the [2:] is to remove the '0b' from the front of the binary string
-        dc_magnitude = bin(dc_arr[index])[2:]
-        if dc_arr[index] < 0:
+        dc_magnitude = bin(int(dc_arr[index]))[2:]
+        if int(dc_arr[index]) < 0:
             dc_magnitude = onesComp(dc_magnitude)
         dc_bitstring = dc_codeword + dc_magnitude
         bitstring += dc_bitstring
@@ -545,8 +549,8 @@ def huffman(dc_arr, ac_arr):
             # ac values are stored in pairs (skip, value)
             # with skip being the number of zeroes, value being the
             # value of the next non-zero coefficient
-            ac_skip = ac_coef[0]
-            ac_value = ac_coef[1]
+            ac_skip = int(ac_coef[0])
+            ac_value = int(ac_coef[1])
             ac_category = categorize(ac_value)
             ac_magnitude = bin(ac_value)[2:]
             if ac_value < 0:
@@ -555,7 +559,6 @@ def huffman(dc_arr, ac_arr):
             ac_bitstring = ac_codeword + ac_magnitude
             bitstring += ac_bitstring
     return bitstring
-
 
 ########################################
 ########PROGRAM BEGINS HERE#############
@@ -602,13 +605,24 @@ zz_img = zigZagEncode(Y_img_quant)
 # encode AC coefficients using RLE
 
 dc_arr, ac_arr = RLEandDPCM(zz_img)
+print(dc_arr[0], ac_arr[0])
 
 # Huffman coding
 
 bitstring = huffman(dc_arr, ac_arr)
+print(len(bitstring))
+final_file = open("jpeg.txt", "w")
+final_file.write(bitstring)
+final_file.close()
 
-# in theory this is done then! you can simply write bitstring to a file.
+# this is done then! you can simply write bitstring to a file.
 
+##################################################
+############# DECODER STARTS HERE ################
+##################################################
+
+#decoded_img = huffmanDecode(bitstring)
+#print(decoded_img[0])
 
 
 
