@@ -275,6 +275,28 @@ def huffmanDecode(bitstring):
             continue
     return decoded_img
 
+def unZigZag(decoded_img):
+    zz_img = []
+    for block in decoded_img:
+        zz_block = np.zeros(64)
+        zz_block[0] = block[0]
+        block_len = len(block)
+        ac_val_i = 0
+        for ac_arr_i in range(1, block_len):
+            ac_val_i += block[ac_arr_i][0] + 1
+            zz_block[ac_val_i] = block[ac_arr_i][1]
+        zz_img.append(zz_block)
+    zz_img = np.array(zz_img)
+    return zz_img
+
+def unDPCM(zz_img):
+    cur_dc_val = zz_img[0][0]
+    img_len = len(zz_img)
+    for dc_count in range(1, img_len):
+        cur_dc_val += zz_img[dc_count][0]
+        zz_img[dc_count][0] = cur_dc_val
+    return zz_img
+
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
@@ -282,5 +304,11 @@ def huffmanDecode(bitstring):
 with open('jpeg.txt', 'r') as f:
     bitstring = f.read()
 
+# extract data from Huffman encoding
 decoded_img = huffmanDecode(bitstring)
 
+# restore Huffman data to 64-len zigzag arrays
+zz_img = unZigZag(decoded_img)
+
+# restore DC values from DPCM
+zz_img = unDPCM(zz_img)

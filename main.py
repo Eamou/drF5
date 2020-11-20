@@ -608,12 +608,10 @@ zz_img = zigZagEncode(Y_img_quant)
 # encode AC coefficients using RLE
 
 dc_arr, ac_arr = RLEandDPCM(zz_img)
-print(dc_arr[1], ac_arr[1])
 
 # Huffman coding
 
 bitstring = huffman(dc_arr, ac_arr)
-print(len(bitstring))
 final_file = open("jpeg.txt", "w")
 final_file.write(bitstring)
 final_file.close()
