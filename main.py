@@ -556,7 +556,10 @@ def huffman(dc_arr, ac_arr):
             if ac_value < 0:
                 ac_magnitude = onesComp(ac_magnitude)
             ac_codeword = ac_codeword_dict[(ac_skip, ac_category)]
-            ac_bitstring = ac_codeword + ac_magnitude
+            if ac_codeword != '1010':
+                ac_bitstring = ac_codeword + ac_magnitude
+            else:
+                ac_bitstring = ac_codeword
             bitstring += ac_bitstring
     return bitstring
 
@@ -605,7 +608,7 @@ zz_img = zigZagEncode(Y_img_quant)
 # encode AC coefficients using RLE
 
 dc_arr, ac_arr = RLEandDPCM(zz_img)
-print(dc_arr[0], ac_arr[0])
+print(dc_arr[1], ac_arr[1])
 
 # Huffman coding
 
@@ -616,16 +619,6 @@ final_file.write(bitstring)
 final_file.close()
 
 # this is done then! you can simply write bitstring to a file.
-
-##################################################
-############# DECODER STARTS HERE ################
-##################################################
-
-#decoded_img = huffmanDecode(bitstring)
-#print(decoded_img[0])
-
-
-
 
 ###########################################################
 ############# extra shit in case i need it ################

@@ -275,8 +275,12 @@ def huffmanDecode(bitstring):
             continue
     return decoded_img
 
+########################################
+########PROGRAM BEGINS HERE#############
+########################################
+
 with open('jpeg.txt', 'r') as f:
     bitstring = f.read()
 
 decoded_img = huffmanDecode(bitstring)
-print(decoded_img[0])
+
