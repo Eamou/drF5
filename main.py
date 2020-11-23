@@ -313,27 +313,6 @@ def DCT_2(Y_img):
     dct_img = np.array(dct_img)
     return dct_img
 
-def DCT_3(Y_img):
-    # basically the same as DCT2, but returns Y values from DCT coefs!
-    dct_Y = []
-    for row_block in Y_img:
-        dct_row = []
-        for block in row_block:
-            dct_block = np.zeros((8,8))
-            for i in range(block_size):
-                for j in range(block_size):
-                    sigma_sum = 0 
-                    for k in range(block_size):
-                        for l in range(block_size):
-                            dkl = block[k][l]
-                            sigma_sum += ((w(k)*w(l))/4)*math.cos((math.pi/16)*k*((2*i)+1))*math.cos((math.pi/16)*l*((2*j)+1))*dkl
-                    dct_block[i][j] = sigma_sum
-            dct_row.append(dct_block)
-        dct_row = np.array(dct_row)
-        dct_Y.append(dct_row)
-    dct_Y = np.array(dct_Y)
-    return dct_Y
-
 def quantizeAndRound(Y_img):
     # quantizes DCT coefs in-place using quant_table_2 atm (add quality options later)
     # then rounds to nearest integer

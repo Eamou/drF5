@@ -383,6 +383,44 @@ def unZigZag(zz_img):
     img_tiles = np.array(img_tiles)
     return img_tiles
 
+def deQuantize(Y_img):
+    Y_img_len = len(Y_img)
+    for row_block_i in range(Y_img_len):
+        row_len = len(Y_img[row_block_i])
+        for block_i in range(row_len):
+            # divide by quantization table
+            np.multiply(quant_table_2, Y_img[row_block_i][block_i], Y_img[row_block_i][block_i])
+    return Y_img
+
+def w(k_num):
+    # for use in DCT transformation
+    if k_num == 0:
+        return 1/math.sqrt(2)
+    else:
+        return 1
+
+def DCT_3(Y_img):
+    # basically the same as DCT2, but returns Y values from DCT coefs!
+    block_size = 8
+    dct_Y = []
+    for row_block in Y_img:
+        dct_row = []
+        for block in row_block:
+            dct_block = np.zeros((8,8))
+            for i in range(block_size):
+                for j in range(block_size):
+                    sigma_sum = 0 
+                    for k in range(block_size):
+                        for l in range(block_size):
+                            dkl = block[k][l]
+                            sigma_sum += ((w(k)*w(l))/4)*math.cos((math.pi/16)*k*((2*i)+1))*math.cos((math.pi/16)*l*((2*j)+1))*dkl
+                    dct_block[i][j] = sigma_sum + 128
+            dct_row.append(dct_block)
+        dct_row = np.array(dct_row)
+        dct_Y.append(dct_row)
+    dct_Y = np.array(dct_Y)
+    return dct_Y
+
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
@@ -392,7 +430,6 @@ with open('jpeg.txt', 'r') as f:
 
 # extract data from Huffman encoding
 decoded_img = huffmanDecode(bitstring)
-print(len(decoded_img))
 
 # restore Huffman data to 64-len zigzag arrays
 zz_img = unRLE(decoded_img)
@@ -402,3 +439,10 @@ zz_img = unDPCM(zz_img)
 
 # transform 64-len zigzag array to 8x8 tile
 img_tiles = unZigZag(zz_img)
+
+# de-quantize
+dct_img = deQuantize(img_tiles)
+
+# inverse DCT and shift +128
+Y_img = DCT_3(dct_img)
+print(Y_img[0][0])
