@@ -228,22 +228,26 @@ def huffmanDecode(bitstring):
     bitstring_length = len(bitstring)
     while cur_bit_i < bitstring_length:
         cur_bitstream += bitstring[cur_bit_i]
+        #print(cur_bitstream, cur_bit_i)
         try:
             if DC_flag:
                 category = dc_codeword_dict_inv[cur_bitstream]
                 DC_flag = False
                 cur_bit_i += 1
-                dc_magnitude = ''
-                dc_magnitude_len = cur_bit_i + category
-                while cur_bit_i < dc_magnitude_len:
-                    dc_magnitude += bitstring[cur_bit_i]
-                    cur_bit_i += 1
-                if dc_magnitude[0] == '0':
-                    dc_magnitude = onesComp(dc_magnitude)
-                    dc_magnitude = -1 * int(dc_magnitude, 2)
-                else:
-                    dc_magnitude = int(dc_magnitude, 2)
-                decoded_block.append(dc_magnitude)
+                if category != 0:
+                    dc_magnitude = ''
+                    dc_magnitude_len = cur_bit_i + category
+                    while cur_bit_i < dc_magnitude_len:
+                        dc_magnitude += bitstring[cur_bit_i]
+                        cur_bit_i += 1
+                    if dc_magnitude[0] == '0':
+                        dc_magnitude = onesComp(dc_magnitude)
+                        dc_magnitude = -1 * int(dc_magnitude, 2)
+                    else:
+                        dc_magnitude = int(dc_magnitude, 2)
+                    decoded_block.append(dc_magnitude)
+                elif category == 0:
+                    decoded_block.append(0)
                 cur_bitstream = ''
                 continue
             else:
@@ -254,6 +258,11 @@ def huffmanDecode(bitstring):
                     decoded_block = []
                     cur_bit_i += 1
                     cur_bitstream = ''
+                    continue
+                elif category == (15,0):
+                    decoded_block.append([category[0], 0])
+                    cur_bitstream = ''
+                    cur_bit_i += 1
                     continue
                 else:
                     cur_bit_i += 1
@@ -275,7 +284,7 @@ def huffmanDecode(bitstring):
             continue
     return decoded_img
 
-def unZigZag(decoded_img):
+def unRLE(decoded_img):
     zz_img = []
     for block in decoded_img:
         zz_block = np.zeros(64)
@@ -383,9 +392,10 @@ with open('jpeg.txt', 'r') as f:
 
 # extract data from Huffman encoding
 decoded_img = huffmanDecode(bitstring)
+print(len(decoded_img))
 
 # restore Huffman data to 64-len zigzag arrays
-zz_img = unZigZag(decoded_img)
+zz_img = unRLE(decoded_img)
 
 # restore DC values from DPCM
 zz_img = unDPCM(zz_img)

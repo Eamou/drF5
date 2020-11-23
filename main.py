@@ -542,7 +542,10 @@ def huffman(dc_arr, ac_arr):
         dc_magnitude = bin(int(dc_arr[index]))[2:]
         if int(dc_arr[index]) < 0:
             dc_magnitude = onesComp(dc_magnitude)
-        dc_bitstring = dc_codeword + dc_magnitude
+        if dc_codeword != '00':
+            dc_bitstring = dc_codeword + dc_magnitude
+        else:
+            dc_bitstring = dc_codeword
         bitstring += dc_bitstring
         # now find all the ac bit reps
         for ac_coef in ac_arr[index]:
@@ -556,7 +559,7 @@ def huffman(dc_arr, ac_arr):
             if ac_value < 0:
                 ac_magnitude = onesComp(ac_magnitude)
             ac_codeword = ac_codeword_dict[(ac_skip, ac_category)]
-            if ac_codeword != '1010':
+            if ac_codeword != '1010' and ac_codeword != '11111111001':
                 ac_bitstring = ac_codeword + ac_magnitude
             else:
                 ac_bitstring = ac_codeword
