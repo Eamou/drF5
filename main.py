@@ -6,7 +6,7 @@ import math
 # quantization tables - these will be changed later
 # possibly stored in a file?
 # option to change encoding quality added later
-quant_table = np.array([[
+Y_quant_table = np.array([[
     16, 11, 10, 16, 24, 40, 51, 61],
 [12, 12, 14, 19, 26, 58, 60, 55],
 [14, 13, 16, 24, 40, 57, 69, 56],
@@ -15,6 +15,17 @@ quant_table = np.array([[
 [24, 36, 55, 64, 81, 104, 113, 92],
 [49, 64, 78, 87, 103, 121, 120, 101],
 [72, 92, 95, 98, 112, 100, 103, 99
+]])
+
+C_quant_table = np.array([[
+    17, 18, 24, 47, 99, 99, 99, 99],
+[18, 21, 26, 66, 99, 99, 99, 99],
+[24, 26, 56, 99, 99, 99, 99, 99],
+[47, 66, 99, 99, 99, 99, 99, 99],
+[99, 99, 99, 99, 99, 99, 99, 99],
+[99, 99, 99, 99, 99, 99, 99, 99],
+[99, 99, 99, 99, 99, 99, 99, 99],
+[99, 99, 99, 99, 99, 99, 99, 99
 ]])
 
 quant_table_2 = np.array([[
@@ -266,22 +277,38 @@ def YCbCr_convert(bgr):
 def BGR2YCbCr(img_tiles):
     # perform conversion for each pixel
     Y_img = []
+    Cb_img = []
+    Cr_img = []
     # I know this looks bad but it's only O(n^2)!
     for row in range(ver_block_count):
         Y_tiles = []
+        Cb_tiles = []
+        Cr_tiles = []
         for column in range(hor_block_count):
             Y_block = np.zeros((8,8))
+            Cb_block = np.zeros((8,8))
+            Cr_block = np.zeros((8,8))
             for block in range(block_size):
                 for pixel_i in range(block_size):
                     pixel = np.array([YCbCr_convert(img_tiles[row][column][block][pixel_i])])
                     img_tiles[row][column][block][pixel_i] = pixel
                     Y_block[block][pixel_i] = pixel[0][0]-128
+                    Cb_block[block][pixel_i] = pixel[0][1]-128
+                    Cr_block[block][pixel_i] = pixel[0][2]-128
             Y_tiles.append(Y_block)
+            Cb_tiles.append(Cb_block)
+            Cr_tiles.append(Cr_block)
         Y_tiles = np.array(Y_tiles)
+        Cb_tiles = np.array(Cb_tiles)
+        Cr_tiles = np.array(Cr_tiles)
         Y_img.append(Y_tiles)
-    Y_img = np.array(Y_img)      
+        Cb_img.append(Cb_tiles)
+        Cr_img.append(Cr_tiles)
+    Y_img = np.array(Y_img)
+    Cb_img = np.array(Cb_img)
+    Cr_img = np.array(Cr_img)      
 
-    return img_tiles, Y_img
+    return img_tiles, Y_img, Cb_img, Cr_img
 
 def w(k_num):
     # for use in DCT transformation
@@ -313,15 +340,18 @@ def DCT_2(Y_img):
     dct_img = np.array(dct_img)
     return dct_img
 
-def quantizeAndRound(Y_img):
+def quantizeAndRound(Y_img, Y_flag):
     # quantizes DCT coefs in-place using quant_table_2 atm (add quality options later)
     # then rounds to nearest integer
     Y_img_len = len(Y_img)
     for row_block_i in range(Y_img_len):
         row_len = len(Y_img[row_block_i])
         for block_i in range(row_len):
-            # divide by quantization table
-            np.divide(Y_img[row_block_i][block_i], quant_table_2, Y_img[row_block_i][block_i])
+            # divide by relevant quantization table
+            if Y_flag:
+                np.divide(Y_img[row_block_i][block_i], Y_quant_table, Y_img[row_block_i][block_i])
+            else:
+                np.divide(Y_img[row_block_i][block_i], C_quant_table, Y_img[row_block_i][block_i])
             # round to nearest int
             np.rint(Y_img[row_block_i][block_i], Y_img[row_block_i][block_i])
     return Y_img
@@ -508,41 +538,54 @@ def onesComp(bitstring):
     return oc_bitstring
 
 
-def huffman(dc_arr, ac_arr):
+def huffman(Y_dc_arr, Y_ac_arr, Cb_dc_arr, Cb_ac_arr, Cr_dc_arr, Cr_ac_arr):
     # compute and create final bitstring of data
     # dc and ac arrays should have same length, so can just use one
     bitstring = ''
-    length = len(dc_arr)
+    length = len(Y_dc_arr)
     for index in range(length):
-        # find dc bit representation first
-        dc_category = categorize(dc_arr[index])
-        dc_codeword = dc_codeword_dict[dc_category]
-        # the [2:] is to remove the '0b' from the front of the binary string
-        dc_magnitude = bin(int(dc_arr[index]))[2:]
-        if int(dc_arr[index]) < 0:
-            dc_magnitude = onesComp(dc_magnitude)
-        if dc_codeword != '00':
-            dc_bitstring = dc_codeword + dc_magnitude
-        else:
-            dc_bitstring = dc_codeword
-        bitstring += dc_bitstring
-        # now find all the ac bit reps
-        for ac_coef in ac_arr[index]:
-            # ac values are stored in pairs (skip, value)
-            # with skip being the number of zeroes, value being the
-            # value of the next non-zero coefficient
-            ac_skip = int(ac_coef[0])
-            ac_value = int(ac_coef[1])
-            ac_category = categorize(ac_value)
-            ac_magnitude = bin(ac_value)[2:]
-            if ac_value < 0:
-                ac_magnitude = onesComp(ac_magnitude)
-            ac_codeword = ac_codeword_dict[(ac_skip, ac_category)]
-            if ac_codeword != '1010' and ac_codeword != '11111111001':
-                ac_bitstring = ac_codeword + ac_magnitude
+        YCbCr_num = 0
+        while YCbCr_num < 3:
+            if YCbCr_num == 0:
+                dc_arr = Y_dc_arr
+                ac_arr = Y_ac_arr
+            elif YCbCr_num == 1:
+                dc_arr = Cb_dc_arr
+                ac_arr = Cb_ac_arr
+            elif YCbCr_num == 2:
+                dc_arr = Cr_dc_arr
+                ac_arr = Cr_ac_arr
+            # find dc bit representation first
+            #print(dc_arr[index], YCbCr_num)
+            dc_category = categorize(dc_arr[index])
+            dc_codeword = dc_codeword_dict[dc_category]
+            # the [2:] is to remove the '0b' from the front of the binary string
+            dc_magnitude = bin(int(dc_arr[index]))[2:]
+            if int(dc_arr[index]) < 0:
+                dc_magnitude = onesComp(dc_magnitude)
+            if dc_codeword != '00':
+                dc_bitstring = dc_codeword + dc_magnitude
             else:
-                ac_bitstring = ac_codeword
-            bitstring += ac_bitstring
+                dc_bitstring = dc_codeword
+            bitstring += dc_bitstring
+            # now find all the ac bit reps
+            for ac_coef in ac_arr[index]:
+                # ac values are stored in pairs (skip, value)
+                # with skip being the number of zeroes, value being the
+                # value of the next non-zero coefficient
+                ac_skip = int(ac_coef[0])
+                ac_value = int(ac_coef[1])
+                ac_category = categorize(ac_value)
+                ac_magnitude = bin(ac_value)[2:]
+                if ac_value < 0:
+                    ac_magnitude = onesComp(ac_magnitude)
+                ac_codeword = ac_codeword_dict[(ac_skip, ac_category)]
+                if ac_codeword != '1010' and ac_codeword != '11111111001':
+                    ac_bitstring = ac_codeword + ac_magnitude
+                else:
+                    ac_bitstring = ac_codeword
+                bitstring += ac_bitstring
+            YCbCr_num += 1
     return bitstring
 
 ########################################
@@ -571,33 +614,47 @@ img_tiles = [np.float32(tile) for tile in img_tiles]
 # convert BGR to YCbCr
 # the image is in img_tiles with YCbCr pixels
 # Y_img contains the 8x8 blocks of just the Y values for use in DCT
-img_tiles, Y_img = BGR2YCbCr(img_tiles)
+
+img_tiles, Y_img, Cb_img, Cr_img = BGR2YCbCr(img_tiles)
+print("Separated successfully")
 
 # perform DCT transform.....
 
 Y_img_dct = DCT_2(Y_img)
+Cb_img_dct = DCT_2(Cb_img)
+Cr_img_dct = DCT_2(Cr_img)
+print("finished dct")
 
 # divide the dct-transformed 8x8 block by the selected quantization table
 # and round to nearest integer
 
-Y_img_quant = quantizeAndRound(Y_img_dct)
+Y_img_quant = quantizeAndRound(Y_img_dct, True)
+Cb_img_quant = quantizeAndRound(Cb_img_dct, False)
+Cr_img_quant = quantizeAndRound(Cr_img_dct, False)
+print("finished quant and round")
 
 # zig zag encoding
 
-zz_img = zigZagEncode(Y_img_quant)
+Y_zz_img = zigZagEncode(Y_img_quant)
+Cb_zz_img = zigZagEncode(Cb_img_quant)
+Cr_zz_img = zigZagEncode(Cr_img_quant)
+print("finished zigzag")
 
 # encode DC coefficients ([0][0]) using DPCM
 # encode AC coefficients using RLE
 
-dc_arr, ac_arr = RLEandDPCM(zz_img)
+Y_dc_arr, Y_ac_arr = RLEandDPCM(Y_zz_img)
+Cb_dc_arr, Cb_ac_arr = RLEandDPCM(Cb_zz_img)
+Cr_dc_arr, Cr_ac_arr = RLEandDPCM(Cr_zz_img)
+print("finished rle")
 
 # Huffman coding
 
-bitstring = huffman(dc_arr, ac_arr)
+bitstring = huffman(Y_dc_arr, Y_ac_arr, Cb_dc_arr, Cb_ac_arr, Cr_dc_arr, Cr_ac_arr)
 final_file = open("jpeg.txt", "w")
 final_file.write(bitstring)
 final_file.close()
-
+print("done!")
 # this is done then! you can simply write bitstring to a file.
 
 ###########################################################

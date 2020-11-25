@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 import math
 
-quant_table = np.array([[
+Y_quant_table = np.array([[
     16, 11, 10, 16, 24, 40, 51, 61],
 [12, 12, 14, 19, 26, 58, 60, 55],
 [14, 13, 16, 24, 40, 57, 69, 56],
@@ -13,15 +13,15 @@ quant_table = np.array([[
 [72, 92, 95, 98, 112, 100, 103, 99
 ]])
 
-quant_table_2 = np.array([[
-5, 3, 4, 4, 4, 3, 5, 4],
-[4, 4, 5, 5, 5, 6, 7, 12],
-[8, 7, 7, 7, 7, 15, 11, 11],
-[9, 12, 13, 15, 18, 18, 17, 15],
-[20, 20, 20, 20, 20, 20, 20, 20],
-[20, 20, 20, 20, 20, 20, 20, 20],
-[20, 20, 20, 20, 20, 20, 20, 20],
-[20, 20, 20, 20, 20, 20, 20, 20
+C_quant_table = np.array([[
+    17, 18, 24, 47, 99, 99, 99, 99],
+[18, 21, 26, 66, 99, 99, 99, 99],
+[24, 26, 56, 99, 99, 99, 99, 99],
+[47, 66, 99, 99, 99, 99, 99, 99],
+[99, 99, 99, 99, 99, 99, 99, 99],
+[99, 99, 99, 99, 99, 99, 99, 99],
+[99, 99, 99, 99, 99, 99, 99, 99],
+[99, 99, 99, 99, 99, 99, 99, 99
 ]])
 
 dc_codeword_dict = {
@@ -223,12 +223,25 @@ def huffmanDecode(bitstring):
     cur_bitstream = ''
     cur_bit_i = 0
     DC_flag = True
-    decoded_img = []
-    decoded_block = []
+    Y_decoded_img = []
+    Y_decoded_block = []
+    Cb_decoded_img = []
+    Cb_decoded_block = []
+    Cr_decoded_img = []
+    Cr_decoded_block = []
+    YCbCr_num = 0
     bitstring_length = len(bitstring)
     while cur_bit_i < bitstring_length:
         cur_bitstream += bitstring[cur_bit_i]
-        #print(cur_bitstream, cur_bit_i)
+        if YCbCr_num == 0:
+            decoded_img = Y_decoded_img
+            decoded_block = Y_decoded_block
+        elif YCbCr_num == 1:
+            decoded_img = Cb_decoded_img
+            decoded_block = Cb_decoded_block
+        elif YCbCr_num == 2:
+            decoded_img = Cr_decoded_img
+            decoded_block = Cr_decoded_block
         try:
             if DC_flag:
                 category = dc_codeword_dict_inv[cur_bitstream]
@@ -253,6 +266,13 @@ def huffmanDecode(bitstring):
             else:
                 category = ac_codeword_dict_inv[cur_bitstream]
                 if category == (0,0):
+                    YCbCr_num = (YCbCr_num + 1) % 3
+                    if YCbCr_num == 0:
+                        Cr_decoded_block = []
+                    elif YCbCr_num == 1:
+                        Y_decoded_block = []
+                    elif YCbCr_num == 2:
+                        Cb_decoded_block = []
                     DC_flag = True
                     decoded_img.append(decoded_block)
                     decoded_block = []
@@ -282,7 +302,7 @@ def huffmanDecode(bitstring):
         except:
             cur_bit_i += 1
             continue
-    return decoded_img
+    return Y_decoded_img, Cb_decoded_img, Cr_decoded_img
 
 def unRLE(decoded_img):
     zz_img = []
@@ -310,10 +330,7 @@ def unZigZag(zz_img):
     img_tiles = []
     block_row = []
     for zz_array in zz_img:
-        if len(block_row) == 8:
-            block_row = np.array(block_row)
-            img_tiles.append(block_row)
-            block_row = []
+        # this needs to be updated to change 50 to the actual dimensions of the image
         out_block = np.zeros((8,8))
         out_block[0][0] = zz_array[0]
         out_block[0][1] = zz_array[1]
@@ -380,16 +397,23 @@ def unZigZag(zz_img):
         out_block[7][6] = zz_array[62]
         out_block[7][7] = zz_array[63]
         block_row.append(out_block)
+        if len(block_row) == 50:
+            block_row = np.array(block_row)
+            img_tiles.append(block_row)
+            block_row = []
     img_tiles = np.array(img_tiles)
     return img_tiles
 
-def deQuantize(Y_img):
+def deQuantize(Y_img, Y_flag):
     Y_img_len = len(Y_img)
     for row_block_i in range(Y_img_len):
         row_len = len(Y_img[row_block_i])
         for block_i in range(row_len):
             # divide by quantization table
-            np.multiply(quant_table_2, Y_img[row_block_i][block_i], Y_img[row_block_i][block_i])
+            if Y_flag:
+                np.multiply(Y_quant_table, Y_img[row_block_i][block_i], Y_img[row_block_i][block_i])
+            else:
+                np.multiply(C_quant_table, Y_img[row_block_i][block_i], Y_img[row_block_i][block_i])
     return Y_img
 
 def w(k_num):
@@ -421,6 +445,57 @@ def DCT_3(Y_img):
     dct_Y = np.array(dct_Y)
     return dct_Y
 
+def BGR_convert(YCbCr):
+    # values from https://wikipedia.org/wiki/YCbCr#JPEG_conversion
+    Y = YCbCr[0]
+    Cb = YCbCr[1]
+    Cr = YCbCr[2]
+    B = Y + 1.772*(Cb-128)
+    G = Y - 0.344136*(Cb-128)-0.714136*(Cr-128)
+    R = Y + 1.402*(Cr-128)
+    return [B, G, R]
+
+def YCbCr2BGR(Y_img, Cb_img, Cr_img):
+    img = []
+    # I know this looks bad but it's only O(n^2)!
+    for row in range(ver_block_count):
+        img_tiles = []
+        for column in range(hor_block_count):
+            BGR_block = []
+            for block in range(block_size):
+                pixel_row = []
+                for pixel_i in range(block_size):
+                    Y_val = Y_img[row][column][block][pixel_i]
+                    Cb_val = Cb_img[row][column][block][pixel_i]
+                    Cr_val = Cr_img[row][column][block][pixel_i]
+                    pixel = np.array(BGR_convert([Y_val, Cb_val, Cr_val]))
+                    pixel_row.append(pixel)
+                pixel_row = np.array(pixel_row)
+                BGR_block.append(pixel_row)
+            BGR_block = np.array(BGR_block)
+            img_tiles.append(BGR_block)
+        img_tiles = np.array(img_tiles)
+        img.append(img_tiles)
+    img = np.array(img)
+    return img
+
+def assembleImage(img_tiles):
+    img = []
+    row = []
+    num_rows = len(img_tiles)
+    for row_i in range(num_rows):
+        num_cols = len(img_tiles[row_i])
+        for pixel in range(block_size):
+            for col_i in range(num_cols):
+                block_len = len(img_tiles[row_i][col_i])
+                for block in range(block_len):
+                    row.append(img_tiles[row_i][col_i][pixel][block])
+            row = np.array(row)
+            img.append(row)
+            row = []
+    img = np.array(img)
+    return img
+
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
@@ -428,21 +503,50 @@ def DCT_3(Y_img):
 with open('jpeg.txt', 'r') as f:
     bitstring = f.read()
 
+block_size = 8
+hor_block_count = 50
+ver_block_count = 50
+
 # extract data from Huffman encoding
-decoded_img = huffmanDecode(bitstring)
+Y_decoded_img, Cb_decoded_img, Cr_decoded_img = huffmanDecode(bitstring)
+print("finished decode")
 
 # restore Huffman data to 64-len zigzag arrays
-zz_img = unRLE(decoded_img)
+Y_zz_img = unRLE(Y_decoded_img)
+Cb_zz_img = unRLE(Cb_decoded_img)
+Cr_zz_img = unRLE(Cr_decoded_img)
+print("extracted zigzags")
 
 # restore DC values from DPCM
-zz_img = unDPCM(zz_img)
+Y_zz_img = unDPCM(Y_zz_img)
+Cb_zz_img = unDPCM(Cb_zz_img)
+Cr_zz_img = unDPCM(Cr_zz_img)
+print("extracted DC values from DPCM")
 
 # transform 64-len zigzag array to 8x8 tile
-img_tiles = unZigZag(zz_img)
+Y_img_tiles = unZigZag(Y_zz_img)
+Cb_img_tiles = unZigZag(Cb_zz_img)
+Cr_img_tiles = unZigZag(Cr_zz_img)
+print("restored 8x8 tiles")
 
 # de-quantize
-dct_img = deQuantize(img_tiles)
+Y_dct_img = deQuantize(Y_img_tiles, True)
+Cb_dct_img = deQuantize(Cb_img_tiles, False)
+Cr_dct_img = deQuantize(Cr_img_tiles, False)
+print("reversed quantization")
 
 # inverse DCT and shift +128
-Y_img = DCT_3(dct_img)
-print(Y_img[0][0])
+print("beginning dct...")
+Y_img = DCT_3(Y_dct_img)
+Cb_img = DCT_3(Cb_dct_img)
+Cr_img = DCT_3(Cr_dct_img)
+print("performed inverse DCT")
+
+# transform YCbCr to BGR
+img_tiles = YCbCr2BGR(Y_img, Cb_img, Cr_img)
+print("converted YCbCr to BGR")
+
+# collate tiles into 2d image array
+img = assembleImage(img_tiles)
+cv2.imwrite('color_img.jpg', img)
+cv2.waitKey(0)
