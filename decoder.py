@@ -549,4 +549,4 @@ print("converted YCbCr to BGR")
 # collate tiles into 2d image array
 img = assembleImage(img_tiles)
 cv2.imwrite('color_img.jpg', img)
-cv2.waitKey(0)
+print("done!")
