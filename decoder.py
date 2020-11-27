@@ -522,12 +522,18 @@ Y_zz_img = unDPCM(Y_zz_img)
 Cb_zz_img = unDPCM(Cb_zz_img)
 Cr_zz_img = unDPCM(Cr_zz_img)
 print("extracted DC values from DPCM")
+print("Cb", Cb_zz_img[270])
+print("Cr", Cr_zz_img[270])
+
 
 # transform 64-len zigzag array to 8x8 tile
 Y_img_tiles = unZigZag(Y_zz_img)
 Cb_img_tiles = unZigZag(Cb_zz_img)
 Cr_img_tiles = unZigZag(Cr_zz_img)
 print("restored 8x8 tiles")
+#print("Y", Y_img_tiles[6][21])
+#print("Cb", Cb_img_tiles[6][21])
+#print("Cr", Cr_img_tiles[6][21])
 
 # de-quantize
 Y_dct_img = deQuantize(Y_img_tiles, True)
@@ -544,6 +550,7 @@ print("performed inverse DCT")
 
 # transform YCbCr to BGR
 img_tiles = YCbCr2BGR(Y_img, Cb_img, Cr_img)
+print(img_tiles[6][20])
 print("converted YCbCr to BGR")
 
 # collate tiles into 2d image array

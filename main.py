@@ -453,8 +453,10 @@ def RLEandDPCM(zz_img):
                 dc_array.append(zz_img[row_block_i][block_i][0])
             else:
                 # for the rest, encode the difference
-                dc_array.append(zz_img[row_block_i][block_i][0] - zz_img[row_block_i][block_i-1][0])
-            
+                if block_i != 0:
+                    dc_array.append(zz_img[row_block_i][block_i][0] - zz_img[row_block_i][block_i-1][0])
+                else:
+                    dc_array.append(zz_img[row_block_i][block_i][0] - zz_img[row_block_i-1][block_i-1][0])
             # start at 1 to skip the DC value
             ac_i = 1
             zero_count = 0
@@ -604,7 +606,6 @@ block_size = 8
 hor_block_count = img_width // block_size
 ver_block_count = img_height // block_size
 img_tiles = blockify(img)
-
 # convert from list to numpy array
 img_tiles = np.array(img_tiles)
 
@@ -639,7 +640,12 @@ Y_zz_img = zigZagEncode(Y_img_quant)
 Cb_zz_img = zigZagEncode(Cb_img_quant)
 Cr_zz_img = zigZagEncode(Cr_img_quant)
 print("finished zigzag")
-
+#print("Y", Y_zz_img[6][21])
+#print("Cb", Cb_zz_img[6][21])
+#print("Cr", Cr_zz_img[6][21])
+print("Y", Y_zz_img[0][1])
+print("Cb", Cb_zz_img[0][1])
+print("Cr", Cr_zz_img[0][1])
 # encode DC coefficients ([0][0]) using DPCM
 # encode AC coefficients using RLE
 
@@ -647,7 +653,13 @@ Y_dc_arr, Y_ac_arr = RLEandDPCM(Y_zz_img)
 Cb_dc_arr, Cb_ac_arr = RLEandDPCM(Cb_zz_img)
 Cr_dc_arr, Cr_ac_arr = RLEandDPCM(Cr_zz_img)
 print("finished rle")
-
+# [321] is what should be in [320]
+#print("Y", Y_dc_arr[320], Y_ac_arr[320])
+#print("Cb", Cb_dc_arr[320], Cb_ac_arr[320])
+#print("Cr", Cr_dc_arr[320], Cr_ac_arr[320])
+print("Y", Y_dc_arr[1], Y_ac_arr[1])
+print("Cb", Cb_dc_arr[1], Cb_ac_arr[1])
+print("Cr", Cr_dc_arr[1], Cr_ac_arr[1])
 # Huffman coding
 
 bitstring = huffman(Y_dc_arr, Y_ac_arr, Cb_dc_arr, Cb_ac_arr, Cr_dc_arr, Cr_ac_arr)
