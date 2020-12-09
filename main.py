@@ -600,14 +600,18 @@ def huffman(Y_dc_arr, Y_ac_arr, Cb_dc_arr, Cb_ac_arr, Cr_dc_arr, Cr_ac_arr):
 def messageConv(message):
     bin_string = ""
     for char in message:
-        bin_string += bin(ord(char))[2:]
+        bin_val = bin(ord(char))[2:]
+        while len(bin_val) < 7:
+            bin_val = '0' + bin_val
+        bin_string += bin_val
     return bin_string
 
 def genRandomPath(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr):
+    # num must be 7 bits - ' ' is 6!
     bit_location = []
     for bit in bin_msg:
         bit_index = []
-        component = random.randrange(0,2)
+        component = random.randrange(0,3)
         bit_index.append(component)
         cur_comp = []
         if component == 0:
@@ -625,21 +629,16 @@ def genRandomPath(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr):
             elif str(cur_comp[index][0]) == '[15, 0]':
                 continue
             else:
-                print(cur_comp[index][0])
-                #print("numbum:", cur_comp[index][0][1])
                 bin_string = bin(int(cur_comp[index][0][1]))
-                if bin_string[-1] == bit:
-                    bit_index.append(index)
-                    valid_index = True
-                    continue
-                else:
+                #print("stuff:", cur_comp[index][0][1], bin_string, bin_string[-1], bit)
+                if bin_string[-1] != bit:
                     if int(cur_comp[index][0][1]) > 0:
                         cur_comp[index][0][1] = float(int(cur_comp[index][0][1]) + 1)
                     else:
                         cur_comp[index][0][1] = float(int(cur_comp[index][0][1]) - 1)
-                    bit_index.append(index)
-                    valid_index = True
-                    continue
+                bit_index.append(index)
+                valid_index = True
+                break
         bit_location.append(bit_index)
     return bit_location, Y_ac_arr, Cb_ac_arr, Cr_ac_arr
 
@@ -660,7 +659,7 @@ except:
     print("Please enter a string")
     quit(1)
 """
-message = "hello"
+message = "i love mushrooms"
 bin_msg = messageConv(message)
 
 # split image into 8x8 blocks and store in img_tiles
@@ -716,6 +715,7 @@ print("finished rle")
 
 print("encoding message...")
 encode_path, Y_ac_arr, Cb_ac_arr, Cr_ac_arr = genRandomPath(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr)
+#print(encode_path)
 with open('msgpath', 'wb') as fp:
     pickle.dump(encode_path, fp)
 print("encoded and written path to file")
