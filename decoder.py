@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 import math
+import pickle
 
 Y_quant_table = np.array([[
     16, 11, 10, 16, 24, 40, 51, 61],
@@ -496,12 +497,39 @@ def assembleImage(img_tiles):
     img = np.array(img)
     return img
 
+def extractMessage(msg_path, Y_decoded_img, Cb_decoded_img, Cr_decoded_img):
+    cur_img = Y_decoded_img
+    bit_msg = ''
+    for bit_location in msg_path:
+        if bit_location[0] == 0:
+            cur_img = Y_decoded_img
+        elif bit_location[0] == 1:
+            cur_img = Cb_decoded_img
+        elif bit_location[0] == 2:
+            cur_img = Cr_decoded_img
+        ac_val = cur_img[bit_location[1]][1][1]
+        ac_val_lsb = bin(ac_val)[-1]
+        bit_msg += ac_val_lsb
+    char = ''
+    message = ''
+    for bit in bit_msg:
+        char += bit
+        if len(char) == 7:
+            letter = chr(int(char, 2))
+            message += letter
+            char = ''
+    return message
+
+
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
 
 with open('jpeg.txt', 'r') as f:
     bitstring = f.read()
+
+with open ('msgpath', 'rb') as fp:
+    msg_path = pickle.load(fp)
 
 block_size = 8
 hor_block_count = 50
@@ -510,6 +538,11 @@ ver_block_count = 50
 # extract data from Huffman encoding
 Y_decoded_img, Cb_decoded_img, Cr_decoded_img = huffmanDecode(bitstring)
 print("finished decode")
+#print(Y_decoded_img[1632])
+
+# extract message
+message = extractMessage(msg_path, Y_decoded_img, Cb_decoded_img, Cr_decoded_img)
+print("Extracted message:", message)
 
 # restore Huffman data to 64-len zigzag arrays
 Y_zz_img = unRLE(Y_decoded_img)
@@ -522,18 +555,12 @@ Y_zz_img = unDPCM(Y_zz_img)
 Cb_zz_img = unDPCM(Cb_zz_img)
 Cr_zz_img = unDPCM(Cr_zz_img)
 print("extracted DC values from DPCM")
-print("Cb", Cb_zz_img[270])
-print("Cr", Cr_zz_img[270])
-
 
 # transform 64-len zigzag array to 8x8 tile
 Y_img_tiles = unZigZag(Y_zz_img)
 Cb_img_tiles = unZigZag(Cb_zz_img)
 Cr_img_tiles = unZigZag(Cr_zz_img)
 print("restored 8x8 tiles")
-#print("Y", Y_img_tiles[6][21])
-#print("Cb", Cb_img_tiles[6][21])
-#print("Cr", Cr_img_tiles[6][21])
 
 # de-quantize
 Y_dct_img = deQuantize(Y_img_tiles, True)
@@ -550,10 +577,9 @@ print("performed inverse DCT")
 
 # transform YCbCr to BGR
 img_tiles = YCbCr2BGR(Y_img, Cb_img, Cr_img)
-print(img_tiles[6][20])
 print("converted YCbCr to BGR")
 
 # collate tiles into 2d image array
 img = assembleImage(img_tiles)
-cv2.imwrite('color_img.jpg', img)
+cv2.imwrite('color_img.png', img)
 print("done!")

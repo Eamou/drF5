@@ -1,7 +1,14 @@
 import numpy as np
 import cv2
 import math
+import random
+import pickle
 
+# to-do:
+# 1. enable program to work with any image dimension
+# 2. enable chroma subsampling
+# 3. jpeg quality options
+# 4. command line options for the 2 and 3
 
 # quantization tables - these will be changed later
 # possibly stored in a file?
@@ -590,6 +597,52 @@ def huffman(Y_dc_arr, Y_ac_arr, Cb_dc_arr, Cb_ac_arr, Cr_dc_arr, Cr_ac_arr):
             YCbCr_num += 1
     return bitstring
 
+def messageConv(message):
+    bin_string = ""
+    for char in message:
+        bin_string += bin(ord(char))[2:]
+    return bin_string
+
+def genRandomPath(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr):
+    bit_location = []
+    for bit in bin_msg:
+        bit_index = []
+        component = random.randrange(0,2)
+        bit_index.append(component)
+        cur_comp = []
+        if component == 0:
+            cur_comp = Y_ac_arr
+        elif component == 1:
+            cur_comp = Cb_ac_arr
+        elif component == 2:
+            cur_comp = Cr_ac_arr
+        valid_index = False
+        index_range = len(cur_comp)
+        while not valid_index:
+            index = random.randrange(0, index_range-1)
+            if str(cur_comp[index][0]) == '[0, 0]':
+                continue
+            elif str(cur_comp[index][0]) == '[15, 0]':
+                continue
+            else:
+                print(cur_comp[index][0])
+                #print("numbum:", cur_comp[index][0][1])
+                bin_string = bin(int(cur_comp[index][0][1]))
+                if bin_string[-1] == bit:
+                    bit_index.append(index)
+                    valid_index = True
+                    continue
+                else:
+                    if int(cur_comp[index][0][1]) > 0:
+                        cur_comp[index][0][1] = float(int(cur_comp[index][0][1]) + 1)
+                    else:
+                        cur_comp[index][0][1] = float(int(cur_comp[index][0][1]) - 1)
+                    bit_index.append(index)
+                    valid_index = True
+                    continue
+        bit_location.append(bit_index)
+    return bit_location, Y_ac_arr, Cb_ac_arr, Cr_ac_arr
+
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
@@ -599,6 +652,16 @@ def huffman(Y_dc_arr, Y_ac_arr, Cb_dc_arr, Cb_ac_arr, Cr_dc_arr, Cr_ac_arr):
 image_name = 'fagen.png'
 img = readImage(image_name)
 img_height, img_width = getImageDimensions(img)
+
+"""
+try:
+    message = str(input("Enter message: "))
+except:
+    print("Please enter a string")
+    quit(1)
+"""
+message = "hello"
+bin_msg = messageConv(message)
 
 # split image into 8x8 blocks and store in img_tiles
 # note that this is a downsampling ratio of 4:4:4 (no downsampling), others added later?
@@ -620,7 +683,7 @@ img_tiles, Y_img, Cb_img, Cr_img = BGR2YCbCr(img_tiles)
 print("Separated successfully")
 
 # perform DCT transform.....
-
+print("beginning dct...")
 Y_img_dct = DCT_2(Y_img)
 Cb_img_dct = DCT_2(Cb_img)
 Cr_img_dct = DCT_2(Cr_img)
@@ -632,7 +695,7 @@ print("finished dct")
 Y_img_quant = quantizeAndRound(Y_img_dct, True)
 Cb_img_quant = quantizeAndRound(Cb_img_dct, False)
 Cr_img_quant = quantizeAndRound(Cr_img_dct, False)
-print("finished quant and round")
+print("finished quantization and round")
 
 # zig zag encoding
 
@@ -640,12 +703,7 @@ Y_zz_img = zigZagEncode(Y_img_quant)
 Cb_zz_img = zigZagEncode(Cb_img_quant)
 Cr_zz_img = zigZagEncode(Cr_img_quant)
 print("finished zigzag")
-#print("Y", Y_zz_img[6][21])
-#print("Cb", Cb_zz_img[6][21])
-#print("Cr", Cr_zz_img[6][21])
-print("Y", Y_zz_img[0][1])
-print("Cb", Cb_zz_img[0][1])
-print("Cr", Cr_zz_img[0][1])
+
 # encode DC coefficients ([0][0]) using DPCM
 # encode AC coefficients using RLE
 
@@ -653,13 +711,15 @@ Y_dc_arr, Y_ac_arr = RLEandDPCM(Y_zz_img)
 Cb_dc_arr, Cb_ac_arr = RLEandDPCM(Cb_zz_img)
 Cr_dc_arr, Cr_ac_arr = RLEandDPCM(Cr_zz_img)
 print("finished rle")
-# [321] is what should be in [320]
-#print("Y", Y_dc_arr[320], Y_ac_arr[320])
-#print("Cb", Cb_dc_arr[320], Cb_ac_arr[320])
-#print("Cr", Cr_dc_arr[320], Cr_ac_arr[320])
-print("Y", Y_dc_arr[1], Y_ac_arr[1])
-print("Cb", Cb_dc_arr[1], Cb_ac_arr[1])
-print("Cr", Cr_dc_arr[1], Cr_ac_arr[1])
+# generate pseudo-random path for encoding message along
+# and encode message along path
+
+print("encoding message...")
+encode_path, Y_ac_arr, Cb_ac_arr, Cr_ac_arr = genRandomPath(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr)
+with open('msgpath', 'wb') as fp:
+    pickle.dump(encode_path, fp)
+print("encoded and written path to file")
+
 # Huffman coding
 
 bitstring = huffman(Y_dc_arr, Y_ac_arr, Cb_dc_arr, Cb_ac_arr, Cr_dc_arr, Cr_ac_arr)
