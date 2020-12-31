@@ -431,15 +431,7 @@ def DCT_3(Y_img):
     for row_block in Y_img:
         dct_row = []
         for block in row_block:
-            dct_block = np.zeros((8,8))
-            for i in range(block_size):
-                for j in range(block_size):
-                    sigma_sum = 0 
-                    for k in range(block_size):
-                        for l in range(block_size):
-                            dkl = block[k][l]
-                            sigma_sum += ((w(k)*w(l))/4)*math.cos((math.pi/16)*k*((2*i)+1))*math.cos((math.pi/16)*l*((2*j)+1))*dkl
-                    dct_block[i][j] = sigma_sum + 128
+            dct_block = cv2.idct(block)
             dct_row.append(dct_block)
         dct_row = np.array(dct_row)
         dct_Y.append(dct_row)
@@ -500,6 +492,7 @@ def assembleImage(img_tiles):
 def extractMessage(msg_path, Y_decoded_img, Cb_decoded_img, Cr_decoded_img):
     cur_img = Y_decoded_img
     bit_msg = ''
+    ac_val_arr = []
     for bit_location in msg_path:
         if bit_location[0] == 0:
             cur_img = Y_decoded_img
@@ -508,8 +501,11 @@ def extractMessage(msg_path, Y_decoded_img, Cb_decoded_img, Cr_decoded_img):
         elif bit_location[0] == 2:
             cur_img = Cr_decoded_img
         ac_val = cur_img[bit_location[1]][1][1]
+        ac_val_arr.append(ac_val)
         ac_val_lsb = bin(ac_val)[-1]
         bit_msg += ac_val_lsb
+    print(bit_msg)
+    print(ac_val_arr)
     char = ''
     message = ''
     for bit in bit_msg:

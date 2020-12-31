@@ -332,15 +332,7 @@ def DCT_2(Y_img):
     for row_block in Y_img:
         dct_img_row = []
         for block in row_block:
-            out_block = np.zeros((8,8))
-            for k in range(block_size):
-                for l in range(block_size):
-                    sigma_sum = 0 
-                    for i in range(block_size):
-                        for j in range(block_size):
-                            Bij = block[i][j]
-                            sigma_sum += ((w(k)*w(l))/4)*math.cos((math.pi/16)*k*((2*i)+1))*math.cos((math.pi/16)*l*((2*j)+1))*Bij
-                    out_block[k][l] = sigma_sum
+            out_block = cv2.dct(block)
             dct_img_row.append(out_block)
         dct_img_row = np.array(dct_img_row)
         dct_img.append(dct_img_row)
@@ -622,21 +614,23 @@ def genRandomPath(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr):
             cur_comp = Cr_ac_arr
         valid_index = False
         index_range = len(cur_comp)
+        valid_indices = list(range(0,index_range-1))
         while not valid_index:
-            index = random.randrange(0, index_range-1)
+            index = random.choice(valid_indices)
             if str(cur_comp[index][0]) == '[0, 0]':
                 continue
             elif str(cur_comp[index][0]) == '[15, 0]':
                 continue
             else:
                 bin_string = bin(int(cur_comp[index][0][1]))
-                #print("stuff:", cur_comp[index][0][1], bin_string, bin_string[-1], bit)
+                print("stuff:", cur_comp[index][0][1], bin_string, bin_string[-1], bit)
                 if bin_string[-1] != bit:
                     if int(cur_comp[index][0][1]) > 0:
                         cur_comp[index][0][1] = float(int(cur_comp[index][0][1]) + 1)
                     else:
                         cur_comp[index][0][1] = float(int(cur_comp[index][0][1]) - 1)
                 bit_index.append(index)
+                valid_indices.remove(index)
                 valid_index = True
                 break
         bit_location.append(bit_index)
@@ -659,8 +653,9 @@ except:
     print("Please enter a string")
     quit(1)
 """
-message = "i love mushrooms"
+message = "smelly poo bum"
 bin_msg = messageConv(message)
+#print(bin_msg)
 
 # split image into 8x8 blocks and store in img_tiles
 # note that this is a downsampling ratio of 4:4:4 (no downsampling), others added later?
@@ -715,7 +710,7 @@ print("finished rle")
 
 print("encoding message...")
 encode_path, Y_ac_arr, Cb_ac_arr, Cr_ac_arr = genRandomPath(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr)
-#print(encode_path)
+print(encode_path)
 with open('msgpath', 'wb') as fp:
     pickle.dump(encode_path, fp)
 print("encoded and written path to file")
