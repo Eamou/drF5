@@ -636,15 +636,42 @@ def genRandomPath(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr):
         bit_location.append(bit_index)
     return bit_location, Y_ac_arr, Cb_ac_arr, Cr_ac_arr
 
+def padImageHeight(img):
+    # repeat last row of pixels until dimension is multiple of 8
+    while len(img) % 8 != 0:
+        img = np.append(img, [img[len(img)-1]], axis=0)
+    return img
+
+def padImageWidth(img):
+    # repeat last column of pixels until dimension is multiple of 8
+    img_list = list(img)
+    width = getImageDimensions(img)[1]
+    while width % 8 != 0:
+        for row_index in range(len(img)):
+            row_list = list(img_list[row_index])
+            pixel_list = list(row_list[-1])
+            row_list.append(pixel_list)
+            img_list[row_index] = row_list
+        width += 1
+    img = np.array(img_list)
+    return img
+
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
 
 # read image (ability to input image name to be added later)
 # get image dimensions
-image_name = 'fagen.png'
+image_name = 'fagen_clip_2.png'
 img = readImage(image_name)
 img_height, img_width = getImageDimensions(img)
+if img_width % 8 != 0:
+    img = padImageWidth(img)
+elif img_height % 8 != 0:
+    img = padImageHeight(img)
+img_height, img_width = getImageDimensions(img)
+
+# ensure message isnt embedded in padded bits?
 
 """
 try:
