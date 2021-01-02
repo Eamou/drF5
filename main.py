@@ -653,7 +653,7 @@ img_height, img_width = getImageDimensions(img)
 MAX_PAYLOAD = findMaxPayload(img_height, img_width)
 
 # store original image dimensions
-with open('v_imgdim', 'wb') as fp:
+with open('.v_imgdim', 'wb') as fp:
     pickle.dump((img_height, img_width), fp)
 
 # adjust image with padding to enable 8x8 blocks
@@ -664,7 +664,7 @@ elif img_height % BLOCK_SIZE != 0:
 
 # new dimensions
 img_height, img_width = getImageDimensions(img)
-with open('imgdim', 'wb') as fp:
+with open('.imgdim', 'wb') as fp:
     pickle.dump((img_height, img_width), fp)
 
 # ensure message isnt embedded in padded bits?
@@ -728,7 +728,7 @@ print("finished zigzag")
 print("encoding message...")
 encode_path, Y_zz_img, Cb_zz_img, Cr_zz_img = genRandomPath(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
 #print(len(bin_msg), bin_msg, encode_path)
-with open('msgpath', 'wb') as fp:
+with open('.msgpath', 'wb') as fp:
     pickle.dump(encode_path, fp)
 print("encoded and written path to file")
 

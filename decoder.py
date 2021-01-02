@@ -527,13 +527,13 @@ BLOCK_SIZE = 8
 with open('jpeg.txt', 'r') as f:
     bitstring = f.read()
 
-with open ('msgpath', 'rb') as fp:
+with open ('.msgpath', 'rb') as fp:
     msg_path = pickle.load(fp)
 
-with open ('imgdim', 'rb') as fp:
+with open ('.imgdim', 'rb') as fp:
     img_height, img_width = pickle.load(fp)
 
-with open ('v_imgdim', 'rb') as fp:
+with open ('.v_imgdim', 'rb') as fp:
     v_img_height, v_img_width = pickle.load(fp)
 
 hor_block_count = img_width // BLOCK_SIZE
@@ -594,5 +594,5 @@ if img_height != v_img_height:
     img = removeVPadding(img)
 if img_width != v_img_width:
     img = removeHPadding(img)
-cv2.imwrite('color_img.png', img)
+cv2.imwrite('images/color_img.png', img)
 print("done!")
