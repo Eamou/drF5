@@ -222,8 +222,7 @@ def onesComp(bitstring):
 
 def huffmanDecode(bitstring):
     cur_bitstream = ''
-    cur_bit_i = 0
-    YCbCr_num = 0
+    cur_bit_i, YCbCr_num = 0, 0
     DC_flag = True
     Y_decoded_img, Y_decoded_block = [], []
     Cb_decoded_img, Cb_decoded_block = [], []
@@ -315,8 +314,7 @@ def unRLE(decoded_img):
             ac_val_i += block[ac_arr_i][0] + 1
             zz_block[ac_val_i] = block[ac_arr_i][1]
         zz_img.append(zz_block)
-    zz_img = np.array(zz_img)
-    return zz_img
+    return np.array(zz_img)
 
 def unDPCM(zz_img):
     cur_dc_val = zz_img[0][0]
@@ -327,8 +325,7 @@ def unDPCM(zz_img):
     return zz_img
 
 def unZigZag(zz_img):
-    img_tiles = []
-    block_row = []
+    img_tiles, block_row = [], []
     for zz_array in zz_img:
         # this needs to be updated to change 50 to the actual dimensions of the image
         out_block = np.zeros((8,8))
@@ -398,11 +395,9 @@ def unZigZag(zz_img):
         out_block[7][7] = zz_array[63]
         block_row.append(out_block)
         if len(block_row) == hor_block_count:
-            block_row = np.array(block_row)
-            img_tiles.append(block_row)
+            img_tiles.append(np.array(block_row))
             block_row = []
-    img_tiles = np.array(img_tiles)
-    return img_tiles
+    return np.array(img_tiles)
 
 def deQuantize(Y_img, Y_flag):
     Y_img_len = len(Y_img)
@@ -423,28 +418,24 @@ def w(k_num):
     else:
         return 1
 
-def DCT_3(Y_img):
+def DCT_3(img_comp):
     # basically the same as DCT2, but returns Y values from DCT coefs!
-    dct_Y = []
-    for row_block in Y_img:
+    dct_img = []
+    for row_block in img_comp:
         dct_row = []
         for block in row_block:
             dct_block = cv2.idct(block)
             dct_row.append(dct_block)
-        dct_row = np.array(dct_row)
-        dct_Y.append(dct_row)
-    dct_Y = np.array(dct_Y)
-    return dct_Y
+        dct_img.append(np.array(dct_row))
+    return np.array(dct_img)
 
 def BGR_convert(YCbCr):
     # values from https://wikipedia.org/wiki/YCbCr#JPEG_conversion
-    Y = YCbCr[0]
-    Cb = YCbCr[1]
-    Cr = YCbCr[2]
+    Y, Cb, Cr = YCbCr
     B = Y + 1.772*(Cb-128)
     G = Y - 0.344136*(Cb-128)-0.714136*(Cr-128)
     R = Y + 1.402*(Cr-128)
-    return [B, G, R]
+    return B, G, R
 
 def YCbCr2BGR(Y_img, Cb_img, Cr_img):
     img = []
@@ -459,20 +450,14 @@ def YCbCr2BGR(Y_img, Cb_img, Cr_img):
                     Y_val = Y_img[row][column][block][pixel_i]
                     Cb_val = Cb_img[row][column][block][pixel_i]
                     Cr_val = Cr_img[row][column][block][pixel_i]
-                    pixel = np.array(BGR_convert([Y_val, Cb_val, Cr_val]))
-                    pixel_row.append(pixel)
-                pixel_row = np.array(pixel_row)
-                BGR_block.append(pixel_row)
-            BGR_block = np.array(BGR_block)
-            img_tiles.append(BGR_block)
-        img_tiles = np.array(img_tiles)
-        img.append(img_tiles)
-    img = np.array(img)
-    return img
+                    pixel_row.append(np.array(BGR_convert([Y_val, Cb_val, Cr_val])))
+                BGR_block.append(np.array(pixel_row))
+            img_tiles.append(np.array(BGR_block))
+        img.append(np.array(img_tiles))
+    return np.array(img)
 
 def assembleImage(img_tiles):
-    img = []
-    row = []
+    img, row = [], []
     num_rows = len(img_tiles)
     for row_i in range(num_rows):
         num_cols = len(img_tiles[row_i])
@@ -481,11 +466,9 @@ def assembleImage(img_tiles):
                 block_len = len(img_tiles[row_i][col_i])
                 for block in range(block_len):
                     row.append(img_tiles[row_i][col_i][pixel][block])
-            row = np.array(row)
-            img.append(row)
+            img.append(np.array(row))
             row = []
-    img = np.array(img)
-    return img
+    return np.array(img)
 
 def extractMessage(msg_path, Y_zz_img, Cb_zz_img, Cr_zz_img):
     cur_img = Y_zz_img

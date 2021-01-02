@@ -245,8 +245,7 @@ ac_codeword_dict_inv = {codeword: cat for cat, codeword in ac_codeword_dict.item
 
 def readImage(image_name):
     # return image object img
-    img = cv2.imread('./images/'+image_name,cv2.IMREAD_COLOR)
-    return img
+    return cv2.imread('./images/'+image_name,cv2.IMREAD_COLOR)
 
 def getImageDimensions(img):
     # return image height, width as integers
@@ -259,11 +258,9 @@ def displayImage(img):
     cv2.destroyAllWindows()
 
 def blockify(img):
-    # transform image into series of 8x8 blocks
-    img_tiles = []
+    img_tiles = [] # transform image into series of 8x8 blocks
     for row in range(0, img_height, BLOCK_SIZE):
-        # fill in row by row
-        img_tiles_row = []
+        img_tiles_row = [] # fill in row by row
         for column in range(0, img_width, BLOCK_SIZE):
             column_end = column + BLOCK_SIZE
             row_end = row + BLOCK_SIZE
@@ -271,7 +268,6 @@ def blockify(img):
             tile = img[row:row_end, column:column_end]
             # add it to the row array
             img_tiles_row.append(tile)
-
         # append rows individually to the image matrix
         # this ensure the dimensions are consistent
         img_tiles.append(img_tiles_row)
@@ -279,49 +275,35 @@ def blockify(img):
 
 def YCbCr_convert(bgr):
     # values from https://wikipedia.org/wiki/YCbCr#JPEG_conversion
-    B = bgr[0]
-    G = bgr[1]
-    R = bgr[2]
+    B, G, R = bgr
     Y = (0.299*R)+(0.587*G)+(0.114*B)
     Cb = 128 - (0.168736*R) - (0.331264*G) + (0.5 * B)
     Cr = 128 + (0.5 * R) - (0.418688 * G) - (0.081312 * B)
-    return [Y, Cb, Cr]
+    return Y, Cb, Cr
 
 def BGR2YCbCr(img_tiles):
     # perform conversion for each pixel
-    Y_img = []
-    Cb_img = []
-    Cr_img = []
+    Y_img, Cb_img, Cr_img = [], [], []
     # I know this looks bad but it's only O(n^2)!
     for row in range(ver_block_count):
-        Y_tiles = []
-        Cb_tiles = []
-        Cr_tiles = []
+        Y_tiles, Cb_tiles, Cr_tiles = [], [], []
         for column in range(hor_block_count):
-            Y_block = np.zeros((8,8))
-            Cb_block = np.zeros((8,8))
-            Cr_block = np.zeros((8,8))
+            Y_block, Cb_block, Cr_block = np.zeros((8,8)), np.zeros((8,8)), np.zeros((8,8))
             for block in range(BLOCK_SIZE):
                 for pixel_i in range(BLOCK_SIZE):
                     pixel = np.array([YCbCr_convert(img_tiles[row][column][block][pixel_i])])
                     img_tiles[row][column][block][pixel_i] = pixel
-                    Y_block[block][pixel_i] = pixel[0][0]-128
-                    Cb_block[block][pixel_i] = pixel[0][1]-128
-                    Cr_block[block][pixel_i] = pixel[0][2]-128
+                    # shift by -128 when using own dct!
+                    Y_block[block][pixel_i] = pixel[0][0]
+                    Cb_block[block][pixel_i] = pixel[0][1]
+                    Cr_block[block][pixel_i] = pixel[0][2]
             Y_tiles.append(Y_block)
             Cb_tiles.append(Cb_block)
             Cr_tiles.append(Cr_block)
-        Y_tiles = np.array(Y_tiles)
-        Cb_tiles = np.array(Cb_tiles)
-        Cr_tiles = np.array(Cr_tiles)
-        Y_img.append(Y_tiles)
-        Cb_img.append(Cb_tiles)
-        Cr_img.append(Cr_tiles)
-    Y_img = np.array(Y_img)
-    Cb_img = np.array(Cb_img)
-    Cr_img = np.array(Cr_img)      
-
-    return img_tiles, Y_img, Cb_img, Cr_img
+        Y_img.append(np.array(Y_tiles))
+        Cb_img.append(np.array(Cb_tiles))
+        Cr_img.append(np.array(Cr_tiles))     
+    return img_tiles, np.array(Y_img), np.array(Cb_img), np.array(Cr_img)
 
 def w(k_num):
     # for use in DCT transformation
@@ -332,7 +314,7 @@ def w(k_num):
 
 def DCT_2(Y_img):
     # transform Y values into DCT coefficients
-    # i think this is O(N^4) as it goes through the whole block
+    # i think this is O(N^2) as it goes through the whole block
     # for each value in the block. definitely the slowest part of the process either way
     dct_img = []
     for row_block in Y_img:
@@ -446,8 +428,7 @@ def RLEandDPCM(zz_img):
     # create array of RLE-encoded AC values - [skip, value]
     # where skip is the number of zeroes preceeding value.
     # [0,0] indicates the end of the block and is appended to the end
-    dc_array = []
-    ac_arrays = []
+    dc_array, ac_arrays = [], []
     zz_img_len = len(zz_img)
     for row_block_i in range(zz_img_len):
         row_len = len(zz_img[row_block_i])
@@ -492,8 +473,7 @@ def RLEandDPCM(zz_img):
             # append end of block marker
             ac_rle.append([0,0])
             ac_arrays.append(ac_rle)
-    dc_array = np.array(dc_array)
-    return dc_array, ac_arrays
+    return np.array(dc_array), ac_arrays
 
 def categorize(coef):
     # return category of coefficient (DC or AC) based on the table
@@ -550,20 +530,16 @@ def huffman(Y_dc_arr, Y_ac_arr, Cb_dc_arr, Cb_ac_arr, Cr_dc_arr, Cr_ac_arr):
     # dc and ac arrays should have same length, so can just use one
     bitstring = ''
     length = len(Y_dc_arr)
-    dc_arr = Y_dc_arr # set default value to remove warnings
-    ac_arr = Y_ac_arr # ^^
+    dc_arr, ac_arr = Y_dc_arr, Y_ac_arr # set default value to remove warnings
     for index in range(length):
         YCbCr_num = 0
         while YCbCr_num < 3:
             if YCbCr_num == 0:
-                dc_arr = Y_dc_arr
-                ac_arr = Y_ac_arr
+                dc_arr, ac_arr = Y_dc_arr, Y_ac_arr
             elif YCbCr_num == 1:
-                dc_arr = Cb_dc_arr
-                ac_arr = Cb_ac_arr
+                dc_arr, ac_arr = Cb_dc_arr, Cb_ac_arr
             elif YCbCr_num == 2:
-                dc_arr = Cr_dc_arr
-                ac_arr = Cr_ac_arr
+                dc_arr, ac_arr = Cr_dc_arr, Cr_ac_arr
             # find dc bit representation first
             #print(dc_arr[index], YCbCr_num)
             dc_category = categorize(dc_arr[index])
@@ -623,8 +599,7 @@ def genRandomPath(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img):
             cur_comp = Cr_zz_img
         valid_index = False
         while not valid_index:
-            rand_row = random.randrange(hor_block_count)
-            rand_col = random.randrange(ver_block_count)
+            rand_row, rand_col = random.randrange(hor_block_count), random.randrange(ver_block_count)
             index = random.choice(valid_indices)
             two_d_location = (rand_row * hor_block_count) + rand_col
             if [component, two_d_location, index] not in bit_locations:
@@ -676,18 +651,22 @@ image_name = 'fagen.png'
 img = readImage(image_name)
 img_height, img_width = getImageDimensions(img)
 MAX_PAYLOAD = findMaxPayload(img_height, img_width)
+
 # store original image dimensions
 with open('v_imgdim', 'wb') as fp:
     pickle.dump((img_height, img_width), fp)
+
 # adjust image with padding to enable 8x8 blocks
 if img_width % BLOCK_SIZE != 0:
     img = padImageWidth(img)
 elif img_height % BLOCK_SIZE != 0:
     img = padImageHeight(img)
+
 # new dimensions
 img_height, img_width = getImageDimensions(img)
 with open('imgdim', 'wb') as fp:
     pickle.dump((img_height, img_width), fp)
+
 # ensure message isnt embedded in padded bits?
 
 """
