@@ -398,7 +398,7 @@ def unZigZag(zz_img):
         out_block[7][6] = zz_array[62]
         out_block[7][7] = zz_array[63]
         block_row.append(out_block)
-        if len(block_row) == 50:
+        if len(block_row) == hor_block_count:
             block_row = np.array(block_row)
             img_tiles.append(block_row)
             block_row = []
@@ -516,6 +516,22 @@ def extractMessage(msg_path, Y_decoded_img, Cb_decoded_img, Cr_decoded_img):
             char = ''
     return message
 
+def removeVPadding(img):
+    img_list = list(img)
+    width = img_width
+    while width != v_img_width:
+        for row_index in range(len(img)):
+            row_list = list(img_list[row_index])
+            row_list.pop()
+            img_list[row_index] = row_list
+        width -= 1
+    img = np.array(img_list)
+    return img
+
+def removeHPadding(img):
+    while len(img) != v_img_height:
+        img.pop()
+    return img
 
 ########################################
 ########PROGRAM BEGINS HERE#############
@@ -527,9 +543,15 @@ with open('jpeg.txt', 'r') as f:
 with open ('msgpath', 'rb') as fp:
     msg_path = pickle.load(fp)
 
+with open ('imgdim', 'rb') as fp:
+    img_height, img_width = pickle.load(fp)
+
+with open ('v_imgdim', 'rb') as fp:
+    v_img_height, v_img_width = pickle.load(fp)
+
 block_size = 8
-hor_block_count = 50
-ver_block_count = 50
+hor_block_count = img_width // block_size
+ver_block_count = img_height // block_size
 
 # extract data from Huffman encoding
 Y_decoded_img, Cb_decoded_img, Cr_decoded_img = huffmanDecode(bitstring)
@@ -577,5 +599,9 @@ print("converted YCbCr to BGR")
 
 # collate tiles into 2d image array
 img = assembleImage(img_tiles)
+if img_height != v_img_height:
+    img = removeVPadding(img)
+if img_width != v_img_width:
+    img = removeHPadding(img)
 cv2.imwrite('color_img.png', img)
 print("done!")

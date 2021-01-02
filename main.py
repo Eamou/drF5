@@ -601,6 +601,8 @@ def messageConv(message):
 def genRandomPath(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr):
     # num must be 7 bits - ' ' is 6!
     bit_location = []
+    index_range = len(Y_ac_arr)
+    valid_indices = list(range(0,index_range-1))
     for bit in bin_msg:
         bit_index = []
         component = random.randrange(0,3)
@@ -613,17 +615,20 @@ def genRandomPath(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr):
         elif component == 2:
             cur_comp = Cr_ac_arr
         valid_index = False
-        index_range = len(cur_comp)
-        valid_indices = list(range(0,index_range-1))
+        print("valid indices:", valid_indices)
         while not valid_index:
-            index = random.choice(valid_indices)
+            try:
+                index = random.choice(valid_indices)
+            except IndexError:
+                print("Ran out of indices for encoding - is your message too long?\nAvailable bits:", index_range-1)
+                exit(1)
             if str(cur_comp[index][0]) == '[0, 0]':
                 continue
             elif str(cur_comp[index][0]) == '[15, 0]':
                 continue
             else:
                 bin_string = bin(int(cur_comp[index][0][1]))
-                print("stuff:", cur_comp[index][0][1], bin_string, bin_string[-1], bit)
+                print("stuff:", index, cur_comp[index][0][1], bin_string, bin_string[-1], bit)
                 if bin_string[-1] != bit:
                     if int(cur_comp[index][0][1]) > 0:
                         cur_comp[index][0][1] = float(int(cur_comp[index][0][1]) + 1)
@@ -634,6 +639,7 @@ def genRandomPath(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr):
                 valid_index = True
                 break
         bit_location.append(bit_index)
+    print(Y_ac_arr)
     return bit_location, Y_ac_arr, Cb_ac_arr, Cr_ac_arr
 
 def padImageHeight(img):
@@ -662,15 +668,21 @@ def padImageWidth(img):
 
 # read image (ability to input image name to be added later)
 # get image dimensions
-image_name = 'fagen_clip_2.png'
+image_name = 'fagen_clip.png'
 img = readImage(image_name)
 img_height, img_width = getImageDimensions(img)
+# store original image dimensions
+with open('v_imgdim', 'wb') as fp:
+    pickle.dump((img_height, img_width), fp)
+# adjust image with padding to enable 8x8 blocks
 if img_width % 8 != 0:
     img = padImageWidth(img)
 elif img_height % 8 != 0:
     img = padImageHeight(img)
+# new dimensions
 img_height, img_width = getImageDimensions(img)
-
+with open('imgdim', 'wb') as fp:
+    pickle.dump((img_height, img_width), fp)
 # ensure message isnt embedded in padded bits?
 
 """
@@ -680,7 +692,7 @@ except:
     print("Please enter a string")
     quit(1)
 """
-message = "smelly poo bum"
+message = "hi"
 bin_msg = messageConv(message)
 #print(bin_msg)
 
@@ -689,6 +701,7 @@ bin_msg = messageConv(message)
 block_size = 8
 hor_block_count = img_width // block_size
 ver_block_count = img_height // block_size
+
 img_tiles = blockify(img)
 # convert from list to numpy array
 img_tiles = np.array(img_tiles)
@@ -737,7 +750,7 @@ print("finished rle")
 
 print("encoding message...")
 encode_path, Y_ac_arr, Cb_ac_arr, Cr_ac_arr = genRandomPath(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr)
-print(encode_path)
+print(len(bin_msg), bin_msg)
 with open('msgpath', 'wb') as fp:
     pickle.dump(encode_path, fp)
 print("encoded and written path to file")
