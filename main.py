@@ -13,6 +13,14 @@ import pickle
 # quantization tables - these will be changed later
 # possibly stored in a file?
 # option to change encoding quality added later
+
+# use a unique hamming/reed-solomon code to encode each letter, ensuring each letter
+# uses any particular block no more than once. this way, if there are multiple bits in a block
+# that is corrupted by cropping, the error correcting codes still need only correct one error.
+# hence, hamming codes can be used. reed-solomon will allow for higher payloads
+# as more letters will be included in an error-correcting chunk, reducing redundancy
+# overheads and increasing overall payload size.
+
 Y_quant_table = np.array([[
     16, 11, 10, 16, 24, 40, 51, 61],
 [12, 12, 14, 19, 26, 58, 60, 55],
@@ -242,9 +250,7 @@ def readImage(image_name):
 
 def getImageDimensions(img):
     # return image height, width as integers
-    img_height = img.shape[0]
-    img_width = img.shape[1]
-    return img_height, img_width
+    return img.shape[0], img.shape[1]
 
 def displayImage(img):
     # show image in new window until key pressed
@@ -603,9 +609,9 @@ def messageConv(message):
 def genRandomPath(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img):
     bit_locations = []
     # choosing to store in the last 10 ac coefficients to reduce artefacts
-    start_coef = 1
-    end_coef = start_coef + MAX_COEF_NUM
-    valid_indices = range(start_coef,12)
+    START_COEF = 1
+    END_COEF = START_COEF + MAX_COEF_NUM
+    valid_indices = range(START_COEF,END_COEF)
     for bit in bin_msg:
         component = random.randrange(0,3)
         cur_comp = []
@@ -636,7 +642,7 @@ def genRandomPath(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img):
 
 def padImageHeight(img):
     # repeat last row of pixels until dimension is multiple of 8
-    while len(img) % 8 != 0:
+    while len(img) % BLOCK_SIZE != 0:
         img = np.append(img, [img[len(img)-1]], axis=0)
     return img
 
@@ -644,7 +650,7 @@ def padImageWidth(img):
     # repeat last column of pixels until dimension is multiple of 8
     img_list = list(img)
     width = getImageDimensions(img)[1]
-    while width % 8 != 0:
+    while width % BLOCK_SIZE != 0:
         for row_index in range(len(img)):
             row_list = list(img_list[row_index])
             pixel_list = list(row_list[-1])
@@ -654,7 +660,7 @@ def padImageWidth(img):
     return np.array(img_list)
 
 def findMaxPayload(img_height, img_width):
-    return (img_height // 8 * img_width // 8) * MAX_COEF_NUM
+    return (img_height // BLOCK_SIZE * img_width // BLOCK_SIZE) * MAX_COEF_NUM
 
 ########################################
 ########PROGRAM BEGINS HERE#############
@@ -674,9 +680,9 @@ MAX_PAYLOAD = findMaxPayload(img_height, img_width)
 with open('v_imgdim', 'wb') as fp:
     pickle.dump((img_height, img_width), fp)
 # adjust image with padding to enable 8x8 blocks
-if img_width % 8 != 0:
+if img_width % BLOCK_SIZE != 0:
     img = padImageWidth(img)
-elif img_height % 8 != 0:
+elif img_height % BLOCK_SIZE != 0:
     img = padImageHeight(img)
 # new dimensions
 img_height, img_width = getImageDimensions(img)
