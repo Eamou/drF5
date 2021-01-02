@@ -598,49 +598,38 @@ def messageConv(message):
         bin_string += bin_val
     return bin_string
 
-def genRandomPath(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr):
-    # num must be 7 bits - ' ' is 6!
-    bit_location = []
-    index_range = len(Y_ac_arr)
-    valid_indices = list(range(0,index_range-1))
+def genRandomPath(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img):
+    bit_locations = []
+    # max_bits = len(Y_zz_img) * len(Y_zz_img[0])
+    # choosing to store in the last 10 ac coefficients to reduce artefacts
+    valid_indices = range(52,63)
     for bit in bin_msg:
-        bit_index = []
         component = random.randrange(0,3)
-        bit_index.append(component)
         cur_comp = []
         if component == 0:
-            cur_comp = Y_ac_arr
+            cur_comp = Y_zz_img
         elif component == 1:
-            cur_comp = Cb_ac_arr
+            cur_comp = Cb_zz_img
         elif component == 2:
-            cur_comp = Cr_ac_arr
+            cur_comp = Cr_zz_img
         valid_index = False
-        print("valid indices:", valid_indices)
         while not valid_index:
-            try:
-                index = random.choice(valid_indices)
-            except IndexError:
-                print("Ran out of indices for encoding - is your message too long?\nAvailable bits:", index_range-1)
-                exit(1)
-            if str(cur_comp[index][0]) == '[0, 0]':
-                continue
-            elif str(cur_comp[index][0]) == '[15, 0]':
-                continue
-            else:
-                bin_string = bin(int(cur_comp[index][0][1]))
-                print("stuff:", index, cur_comp[index][0][1], bin_string, bin_string[-1], bit)
+            rand_row = random.randrange(hor_block_count)
+            rand_col = random.randrange(ver_block_count)
+            index = random.choice(valid_indices)
+            if [component, rand_row, rand_col, index] not in bit_locations:
+                chosen_coef = cur_comp[rand_row][rand_col][index]
+                bin_string = bin(int(chosen_coef))
+                #print("index, chosen_coef:", index, chosen_coef, "matching:", bin_string, bin_string[-1], bit)
                 if bin_string[-1] != bit:
-                    if int(cur_comp[index][0][1]) > 0:
-                        cur_comp[index][0][1] = float(int(cur_comp[index][0][1]) + 1)
-                    else:
-                        cur_comp[index][0][1] = float(int(cur_comp[index][0][1]) - 1)
-                bit_index.append(index)
-                valid_indices.remove(index)
+                    if int(chosen_coef) >= 0:
+                        cur_comp[rand_row][rand_col][index] = float(int(chosen_coef) + 1)
+                    elif int(chosen_coef) < 0:
+                        cur_comp[rand_row][rand_col][index] = float(int(chosen_coef) - 1)
+                two_d_location = (rand_row * hor_block_count) + rand_col
+                bit_locations.append([component, two_d_location, index])
                 valid_index = True
-                break
-        bit_location.append(bit_index)
-    print(Y_ac_arr)
-    return bit_location, Y_ac_arr, Cb_ac_arr, Cr_ac_arr
+    return bit_locations, Y_zz_img, Cb_zz_img, Cr_zz_img
 
 def padImageHeight(img):
     # repeat last row of pixels until dimension is multiple of 8
@@ -668,7 +657,7 @@ def padImageWidth(img):
 
 # read image (ability to input image name to be added later)
 # get image dimensions
-image_name = 'fagen_clip.png'
+image_name = 'fagen_clip_2.png'
 img = readImage(image_name)
 img_height, img_width = getImageDimensions(img)
 # store original image dimensions
@@ -737,6 +726,16 @@ Y_zz_img = zigZagEncode(Y_img_quant)
 Cb_zz_img = zigZagEncode(Cb_img_quant)
 Cr_zz_img = zigZagEncode(Cr_img_quant)
 print("finished zigzag")
+#print("zz", Y_zz_img)
+# generate pseudo-random path for encoding message along
+# and encode message along path
+
+print("encoding message...")
+encode_path, Y_zz_img, Cb_zz_img, Cr_zz_img = genRandomPath(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
+#print(len(bin_msg), bin_msg, encode_path)
+with open('msgpath', 'wb') as fp:
+    pickle.dump(encode_path, fp)
+print("encoded and written path to file")
 
 # encode DC coefficients ([0][0]) using DPCM
 # encode AC coefficients using RLE
@@ -745,15 +744,7 @@ Y_dc_arr, Y_ac_arr = RLEandDPCM(Y_zz_img)
 Cb_dc_arr, Cb_ac_arr = RLEandDPCM(Cb_zz_img)
 Cr_dc_arr, Cr_ac_arr = RLEandDPCM(Cr_zz_img)
 print("finished rle")
-# generate pseudo-random path for encoding message along
-# and encode message along path
-
-print("encoding message...")
-encode_path, Y_ac_arr, Cb_ac_arr, Cr_ac_arr = genRandomPath(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr)
-print(len(bin_msg), bin_msg)
-with open('msgpath', 'wb') as fp:
-    pickle.dump(encode_path, fp)
-print("encoded and written path to file")
+#print("rle", Y_ac_arr)
 
 # Huffman coding
 

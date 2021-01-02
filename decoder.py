@@ -489,25 +489,25 @@ def assembleImage(img_tiles):
     img = np.array(img)
     return img
 
-def extractMessage(msg_path, Y_decoded_img, Cb_decoded_img, Cr_decoded_img):
-    cur_img = Y_decoded_img
+def extractMessage(msg_path, Y_zz_img, Cb_zz_img, Cr_zz_img):
+    cur_img = Y_zz_img
     bit_msg = ''
     ac_val_arr = []
     for bit_location in msg_path:
-        if bit_location[0] == 0:
-            cur_img = Y_decoded_img
-        elif bit_location[0] == 1:
-            cur_img = Cb_decoded_img
-        elif bit_location[0] == 2:
-            cur_img = Cr_decoded_img
-        ac_val = cur_img[bit_location[1]][1][1]
+        component, two_d_location, index = bit_location
+        if component == 0:
+            cur_img = Y_zz_img
+        elif component == 1:
+            cur_img = Cb_zz_img
+        elif component == 2:
+            cur_img = Cr_zz_img
+        ac_val = int(cur_img[two_d_location][index])
         ac_val_arr.append(ac_val)
         ac_val_lsb = bin(ac_val)[-1]
         bit_msg += ac_val_lsb
-    print(bit_msg)
-    print(ac_val_arr)
-    char = ''
-    message = ''
+    #print(bit_msg)
+    #print(ac_val_arr)
+    char, message = '', ''
     for bit in bit_msg:
         char += bit
         if len(char) == 7:
@@ -516,7 +516,7 @@ def extractMessage(msg_path, Y_decoded_img, Cb_decoded_img, Cr_decoded_img):
             char = ''
     return message
 
-def removeVPadding(img):
+def removeHPadding(img):
     img_list = list(img)
     width = img_width
     while width != v_img_width:
@@ -525,13 +525,13 @@ def removeVPadding(img):
             row_list.pop()
             img_list[row_index] = row_list
         width -= 1
-    img = np.array(img_list)
-    return img
+    return np.array(img_list)
 
-def removeHPadding(img):
-    while len(img) != v_img_height:
-        img.pop()
-    return img
+def removeVPadding(img):
+    img_list = list(img)
+    while len(img_list) != v_img_height:
+        img_list.pop()
+    return np.array(img_list)
 
 ########################################
 ########PROGRAM BEGINS HERE#############
@@ -558,15 +558,18 @@ Y_decoded_img, Cb_decoded_img, Cr_decoded_img = huffmanDecode(bitstring)
 print("finished decode")
 #print(Y_decoded_img[1632])
 
-# extract message
-message = extractMessage(msg_path, Y_decoded_img, Cb_decoded_img, Cr_decoded_img)
-print("Extracted message:", message)
-
 # restore Huffman data to 64-len zigzag arrays
 Y_zz_img = unRLE(Y_decoded_img)
 Cb_zz_img = unRLE(Cb_decoded_img)
 Cr_zz_img = unRLE(Cr_decoded_img)
 print("extracted zigzags")
+
+# extract message
+message = extractMessage(msg_path, Y_zz_img, Cb_zz_img, Cr_zz_img)
+print("Extracted message:", message)
+
+# zig zags are stored differently - 2d array here, but a 3d array when encoding positions.
+# e.g, rather than {[[],[],[],[]],[[],[],[],[]]}, it is {[],[],[],[],...,[],[],[],[]}
 
 # restore DC values from DPCM
 Y_zz_img = unDPCM(Y_zz_img)
@@ -598,6 +601,8 @@ img_tiles = YCbCr2BGR(Y_img, Cb_img, Cr_img)
 print("converted YCbCr to BGR")
 
 # collate tiles into 2d image array
+print(img_height, v_img_height)
+print(img_width, v_img_width)
 img = assembleImage(img_tiles)
 if img_height != v_img_height:
     img = removeVPadding(img)
