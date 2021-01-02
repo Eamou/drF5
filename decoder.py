@@ -223,15 +223,14 @@ def onesComp(bitstring):
 def huffmanDecode(bitstring):
     cur_bitstream = ''
     cur_bit_i = 0
-    DC_flag = True
-    Y_decoded_img = []
-    Y_decoded_block = []
-    Cb_decoded_img = []
-    Cb_decoded_block = []
-    Cr_decoded_img = []
-    Cr_decoded_block = []
     YCbCr_num = 0
+    DC_flag = True
+    Y_decoded_img, Y_decoded_block = [], []
+    Cb_decoded_img, Cb_decoded_block = [], []
+    Cr_decoded_img, Cr_decoded_block = [], []
     bitstring_length = len(bitstring)
+    decoded_img = Y_decoded_img # set default value to remove warnings
+    decoded_block = Y_decoded_block # ^^
     while cur_bit_i < bitstring_length:
         cur_bitstream += bitstring[cur_bit_i]
         if YCbCr_num == 0:
@@ -426,7 +425,6 @@ def w(k_num):
 
 def DCT_3(Y_img):
     # basically the same as DCT2, but returns Y values from DCT coefs!
-    block_size = 8
     dct_Y = []
     for row_block in Y_img:
         dct_row = []
@@ -455,9 +453,9 @@ def YCbCr2BGR(Y_img, Cb_img, Cr_img):
         img_tiles = []
         for column in range(hor_block_count):
             BGR_block = []
-            for block in range(block_size):
+            for block in range(BLOCK_SIZE):
                 pixel_row = []
-                for pixel_i in range(block_size):
+                for pixel_i in range(BLOCK_SIZE):
                     Y_val = Y_img[row][column][block][pixel_i]
                     Cb_val = Cb_img[row][column][block][pixel_i]
                     Cr_val = Cr_img[row][column][block][pixel_i]
@@ -478,7 +476,7 @@ def assembleImage(img_tiles):
     num_rows = len(img_tiles)
     for row_i in range(num_rows):
         num_cols = len(img_tiles[row_i])
-        for pixel in range(block_size):
+        for pixel in range(BLOCK_SIZE):
             for col_i in range(num_cols):
                 block_len = len(img_tiles[row_i][col_i])
                 for block in range(block_len):
@@ -537,6 +535,12 @@ def removeVPadding(img):
 ########PROGRAM BEGINS HERE#############
 ########################################
 
+# constants
+###############
+BLOCK_SIZE = 8
+
+###############
+
 with open('jpeg.txt', 'r') as f:
     bitstring = f.read()
 
@@ -549,9 +553,8 @@ with open ('imgdim', 'rb') as fp:
 with open ('v_imgdim', 'rb') as fp:
     v_img_height, v_img_width = pickle.load(fp)
 
-block_size = 8
-hor_block_count = img_width // block_size
-ver_block_count = img_height // block_size
+hor_block_count = img_width // BLOCK_SIZE
+ver_block_count = img_height // BLOCK_SIZE
 
 # extract data from Huffman encoding
 Y_decoded_img, Cb_decoded_img, Cr_decoded_img = huffmanDecode(bitstring)
@@ -566,7 +569,7 @@ print("extracted zigzags")
 
 # extract message
 message = extractMessage(msg_path, Y_zz_img, Cb_zz_img, Cr_zz_img)
-print("Extracted message:", message)
+print("extracted message:", message)
 
 # zig zags are stored differently - 2d array here, but a 3d array when encoding positions.
 # e.g, rather than {[[],[],[],[]],[[],[],[],[]]}, it is {[],[],[],[],...,[],[],[],[]}
@@ -601,8 +604,8 @@ img_tiles = YCbCr2BGR(Y_img, Cb_img, Cr_img)
 print("converted YCbCr to BGR")
 
 # collate tiles into 2d image array
-print(img_height, v_img_height)
-print(img_width, v_img_width)
+#print(img_height, v_img_height)
+#print(img_width, v_img_width)
 img = assembleImage(img_tiles)
 if img_height != v_img_height:
     img = removeVPadding(img)

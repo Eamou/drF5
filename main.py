@@ -5,7 +5,7 @@ import random
 import pickle
 
 # to-do:
-# 1. enable program to work with any image dimension
+# 1. enable program to work with any image dimension //done?
 # 2. enable chroma subsampling
 # 3. jpeg quality options
 # 4. command line options for the 2 and 3
@@ -255,12 +255,12 @@ def displayImage(img):
 def blockify(img):
     # transform image into series of 8x8 blocks
     img_tiles = []
-    for row in range(0, img_height, block_size):
+    for row in range(0, img_height, BLOCK_SIZE):
         # fill in row by row
         img_tiles_row = []
-        for column in range(0, img_width, block_size):
-            column_end = column + block_size
-            row_end = row + block_size
+        for column in range(0, img_width, BLOCK_SIZE):
+            column_end = column + BLOCK_SIZE
+            row_end = row + BLOCK_SIZE
             # select the 8x8 tile
             tile = img[row:row_end, column:column_end]
             # add it to the row array
@@ -295,8 +295,8 @@ def BGR2YCbCr(img_tiles):
             Y_block = np.zeros((8,8))
             Cb_block = np.zeros((8,8))
             Cr_block = np.zeros((8,8))
-            for block in range(block_size):
-                for pixel_i in range(block_size):
+            for block in range(BLOCK_SIZE):
+                for pixel_i in range(BLOCK_SIZE):
                     pixel = np.array([YCbCr_convert(img_tiles[row][column][block][pixel_i])])
                     img_tiles[row][column][block][pixel_i] = pixel
                     Y_block[block][pixel_i] = pixel[0][0]-128
@@ -544,6 +544,8 @@ def huffman(Y_dc_arr, Y_ac_arr, Cb_dc_arr, Cb_ac_arr, Cr_dc_arr, Cr_ac_arr):
     # dc and ac arrays should have same length, so can just use one
     bitstring = ''
     length = len(Y_dc_arr)
+    dc_arr = Y_dc_arr # set default value to remove warnings
+    ac_arr = Y_ac_arr # ^^
     for index in range(length):
         YCbCr_num = 0
         while YCbCr_num < 3:
@@ -600,9 +602,10 @@ def messageConv(message):
 
 def genRandomPath(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img):
     bit_locations = []
-    # max_bits = len(Y_zz_img) * len(Y_zz_img[0])
     # choosing to store in the last 10 ac coefficients to reduce artefacts
-    valid_indices = range(52,63)
+    start_coef = 1
+    end_coef = start_coef + MAX_COEF_NUM
+    valid_indices = range(start_coef,12)
     for bit in bin_msg:
         component = random.randrange(0,3)
         cur_comp = []
@@ -617,7 +620,8 @@ def genRandomPath(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img):
             rand_row = random.randrange(hor_block_count)
             rand_col = random.randrange(ver_block_count)
             index = random.choice(valid_indices)
-            if [component, rand_row, rand_col, index] not in bit_locations:
+            two_d_location = (rand_row * hor_block_count) + rand_col
+            if [component, two_d_location, index] not in bit_locations:
                 chosen_coef = cur_comp[rand_row][rand_col][index]
                 bin_string = bin(int(chosen_coef))
                 #print("index, chosen_coef:", index, chosen_coef, "matching:", bin_string, bin_string[-1], bit)
@@ -626,7 +630,6 @@ def genRandomPath(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img):
                         cur_comp[rand_row][rand_col][index] = float(int(chosen_coef) + 1)
                     elif int(chosen_coef) < 0:
                         cur_comp[rand_row][rand_col][index] = float(int(chosen_coef) - 1)
-                two_d_location = (rand_row * hor_block_count) + rand_col
                 bit_locations.append([component, two_d_location, index])
                 valid_index = True
     return bit_locations, Y_zz_img, Cb_zz_img, Cr_zz_img
@@ -648,18 +651,25 @@ def padImageWidth(img):
             row_list.append(pixel_list)
             img_list[row_index] = row_list
         width += 1
-    img = np.array(img_list)
-    return img
+    return np.array(img_list)
+
+def findMaxPayload(img_height, img_width):
+    return (img_height // 8 * img_width // 8) * MAX_COEF_NUM
 
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
 
+# constants
+MAX_COEF_NUM = 10
+BLOCK_SIZE = 8
+
 # read image (ability to input image name to be added later)
 # get image dimensions
-image_name = 'fagen_clip_2.png'
+image_name = 'fagen.png'
 img = readImage(image_name)
 img_height, img_width = getImageDimensions(img)
+MAX_PAYLOAD = findMaxPayload(img_height, img_width)
 # store original image dimensions
 with open('v_imgdim', 'wb') as fp:
     pickle.dump((img_height, img_width), fp)
@@ -681,15 +691,15 @@ except:
     print("Please enter a string")
     quit(1)
 """
-message = "hi"
+message = "lttstore.com"
 bin_msg = messageConv(message)
-#print(bin_msg)
+if len(bin_msg) > MAX_PAYLOAD:
+    raise ValueError('Message too long')
 
 # split image into 8x8 blocks and store in img_tiles
 # note that this is a downsampling ratio of 4:4:4 (no downsampling), others added later?
-block_size = 8
-hor_block_count = img_width // block_size
-ver_block_count = img_height // block_size
+hor_block_count = img_width // BLOCK_SIZE
+ver_block_count = img_height // BLOCK_SIZE
 
 img_tiles = blockify(img)
 # convert from list to numpy array
