@@ -6,8 +6,8 @@ import pickle
 
 # to-do:
 # 1. enable program to work with any image dimension //done?
-# 2. enable chroma subsampling
-# 3. jpeg quality options
+# 2. enable chroma subsampling - not required but might be nice
+# 3. jpeg quality options?
 # 4. command line options for the 2 and 3
 
 # quantization tables - these will be changed later
@@ -41,17 +41,6 @@ C_quant_table = np.array([[
 [99, 99, 99, 99, 99, 99, 99, 99],
 [99, 99, 99, 99, 99, 99, 99, 99],
 [99, 99, 99, 99, 99, 99, 99, 99
-]])
-
-quant_table_2 = np.array([[
-5, 3, 4, 4, 4, 3, 5, 4],
-[4, 4, 5, 5, 5, 6, 7, 12],
-[8, 7, 7, 7, 7, 15, 11, 11],
-[9, 12, 13, 15, 18, 18, 17, 15],
-[20, 20, 20, 20, 20, 20, 20, 20],
-[20, 20, 20, 20, 20, 20, 20, 20],
-[20, 20, 20, 20, 20, 20, 20, 20],
-[20, 20, 20, 20, 20, 20, 20, 20
 ]])
 
 # Huffman tables for DC and AC values
@@ -637,6 +626,34 @@ def padImageWidth(img):
 def findMaxPayload(img_height, img_width):
     return (img_height // BLOCK_SIZE * img_width // BLOCK_SIZE) * MAX_COEF_NUM
 
+def writeHeader(bitstring):
+    # byte is 16 bits
+    ####### UNDER CONSTRUCTION #######
+    
+    # SOI is always the same
+    SOI = 'FFD8'
+    
+    # JFIF takes some work
+    JFIF_APP0 = 'FFE0'
+    JFIF_LEN = '0010' # calculated based on the rest
+    JFIF_ID = '4A46494600' # doesn't change
+    JFIF_VER = '0101' # version 1.02
+    JFIF_UNITS = '00' # specified via Xdensity and Ydensity as an aspect ratio
+    JFIF_Xden = '0001' # set as default values, change if needed
+    JFIF_Yden = '0001'
+    aspect_ratio = img_width_copy // img_height_copy
+    if aspect_ratio == 0:
+        JFIF_Xden = '0001'
+        JFIF_Yden = '0001'
+    JFIF_XThumb = '00'
+    JFIF_YThumb = '00'
+    JFIF = JFIF_APP0 + JFIF_LEN + JFIF_ID + JFIF_VER + JFIF_UNITS + JFIF_Xden + JFIF_Yden + JFIF_XThumb + JFIF_YThumb
+    
+    # quantization table(s)
+    DQT = 'FFDB'
+
+    EOI = 'FFD9'
+
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
@@ -650,6 +667,7 @@ BLOCK_SIZE = 8
 image_name = 'fagen.png'
 img = readImage(image_name)
 img_height, img_width = getImageDimensions(img)
+img_height_copy, img_width_copy = img_height, img_width
 MAX_PAYLOAD = findMaxPayload(img_height, img_width)
 
 # store original image dimensions
