@@ -280,12 +280,10 @@ def BGR2YCbCr(img_tiles):
             Y_block, Cb_block, Cr_block = np.zeros((8,8)), np.zeros((8,8)), np.zeros((8,8))
             for block in range(BLOCK_SIZE):
                 for pixel_i in range(BLOCK_SIZE):
-                    pixel = np.array([YCbCr_convert(img_tiles[row][column][block][pixel_i])])
+                    pixel = np.array(YCbCr_convert(img_tiles[row][column][block][pixel_i]))
                     img_tiles[row][column][block][pixel_i] = pixel
                     # shift by -128 when using own dct!
-                    Y_block[block][pixel_i] = pixel[0][0]
-                    Cb_block[block][pixel_i] = pixel[0][1]
-                    Cr_block[block][pixel_i] = pixel[0][2]
+                    Y_block[block][pixel_i], Cb_block[block][pixel_i], Cr_block[block][pixel_i] = pixel
             Y_tiles.append(Y_block)
             Cb_tiles.append(Cb_block)
             Cr_tiles.append(Cr_block)
@@ -311,10 +309,8 @@ def DCT_2(Y_img):
         for block in row_block:
             out_block = cv2.dct(block)
             dct_img_row.append(out_block)
-        dct_img_row = np.array(dct_img_row)
-        dct_img.append(dct_img_row)
-    dct_img = np.array(dct_img)
-    return dct_img
+        dct_img.append(np.array(dct_img_row))
+    return np.array(dct_img)
 
 def quantizeAndRound(Y_img, Y_flag):
     # quantizes DCT coefs in-place using quant_table_2 atm (add quality options later)
@@ -406,10 +402,8 @@ def zigZagEncode(Y_img):
             zz_array[62] = out_block[7][6]
             zz_array[63] = out_block[7][7]
             zz_row.append(zz_array)
-        zz_row = np.array(zz_row)
-        zz_image.append(zz_row)
-    zz_image = np.array(zz_image)
-    return zz_image
+        zz_image.append(np.array(zz_row))
+    return np.array(zz_image)
 
 def RLEandDPCM(zz_img):
     # create array of all DC values, encoded using DPCM - each value is the difference
@@ -574,7 +568,7 @@ def messageConv(message):
 def genRandomPath(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img):
     bit_locations = []
     # choosing to store in the last 10 ac coefficients to reduce artefacts
-    START_COEF = 1
+    START_COEF = 53
     END_COEF = START_COEF + MAX_COEF_NUM
     valid_indices = range(START_COEF,END_COEF)
     for bit in bin_msg:
@@ -594,7 +588,6 @@ def genRandomPath(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img):
             if [component, two_d_location, index] not in bit_locations:
                 chosen_coef = cur_comp[rand_row][rand_col][index]
                 bin_string = bin(int(chosen_coef))
-                #print("index, chosen_coef:", index, chosen_coef, "matching:", bin_string, bin_string[-1], bit)
                 if bin_string[-1] != bit:
                     if int(chosen_coef) >= 0:
                         cur_comp[rand_row][rand_col][index] = float(int(chosen_coef) + 1)
