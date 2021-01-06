@@ -8,17 +8,11 @@ With the log and anti-log tables we can obviously also derive the binary and pol
 With this information we are ready to perform the calculative functions required for RS.
 """
 
-# Set the Generator Polynomial and Minimum Primitive Element
-# Changing these will mean the rest of the code will function incorrectly, if at all.
-# They are the 'unique key' of this particular implementation of Reed-Solomon
-
-GEN_POLY = '100011101'              # polynomial: x^8 + x^4 + x^3 + x^2 + 1 :: 285 :: 0x11D
-MIN_PRIM_ELEM = '000000010'         # primitive element (alpha): x :: 1
-
 # Import the look-up tables for field operations of each of the 256 elements in GF(256)
 # Provide lookup data for polynomial/binary form alongside index and decimal, as this will
 # enable easier calculations in long devision
 
+# Table 2: 0x11D
 GF256_ANTILOG = {
     0: 1,
     1: 2,
@@ -148,5 +142,188 @@ GF256_ANTILOG = {
     125: 51,
     126: 102,
     127: 204,
-    128: 133
+    128: 133,
+    129: 23,
+    130: 46,
+    131: 92,
+    132: 184,
+    133: 109,
+    134: 218,
+    135: 169,
+    136: 79,
+    137: 158,
+    138: 33,
+    139: 66,
+    140: 132,
+    141: 21,
+    142: 42,
+    143: 84,
+    144: 168,
+    145: 77,
+    146: 154,
+    147: 41,
+    148: 82,
+    149: 164,
+    150: 85,
+    151: 170,
+    152: 73,
+    153: 146,
+    154: 57,
+    155: 114,
+    156: 228,
+    157: 213,
+    158: 183,
+    159: 115,
+    160: 230,
+    161: 209,
+    162: 191,
+    163: 99,
+    164: 198,
+    165: 145,
+    166: 63,
+    167: 126,
+    168: 252,
+    169: 229,
+    170: 215,
+    171: 179,
+    172: 123,
+    173: 246,
+    174: 241,
+    175: 255,
+    176: 227,
+    177: 219,
+    178: 171,
+    179: 75,
+    180: 150,
+    181: 49,
+    182: 98,
+    183: 196,
+    184: 149,
+    185: 55,
+    186: 110,
+    187: 220,
+    188: 165,
+    189: 87,
+    190: 174,
+    191: 65,
+    192: 130,
+    193: 25,
+    194: 50,
+    195: 100,
+    196: 200,
+    197: 141,
+    198: 7,
+    199: 14,
+    200: 28,
+    201: 56,
+    202: 112,
+    203: 224,
+    204: 221,
+    205: 167,
+    206: 83,
+    207: 166,
+    208: 81,
+    209: 162,
+    210: 89,
+    211: 178,
+    212: 121,
+    213: 242,
+    214: 249,
+    215: 239,
+    216: 195,
+    217: 155,
+    218: 43,
+    219: 86,
+    220: 172,
+    221: 69,
+    222: 138,
+    223: 9,
+    224: 18,
+    225: 36,
+    226: 72,
+    227: 144,
+    228: 61,
+    229: 122,
+    230: 244,
+    231: 245,
+    232: 247,
+    233: 243,
+    234: 251,
+    235: 235,
+    236: 203,
+    237: 139,
+    238: 11,
+    239: 22,
+    240: 44,
+    241: 88,
+    242: 176,
+    243: 125,
+    244: 250,
+    245: 233,
+    246: 207,
+    247: 131,
+    248: 27,
+    249: 54,
+    250: 108,
+    251: 216,
+    252: 173,
+    253: 71,
+    254: 142,
+    255: 0
 }
+
+GF256_LOG = {a_j: j for j, a_j in GF256_ANTILOG.items()}
+
+# Code-defining constants
+# As they are now, 4 errors can be corrected. This can be adjusted by changing these values.
+M = 8
+ALPHA = 2
+N = 255
+K = 239
+T = (N - K) // 2
+B = 0
+
+# Set the Generator Polynomial and Minimum Primitive Element
+# Changing these will mean the rest of the code will function incorrectly, if at all.
+# They are the 'unique key' of this particular implementation of Reed-Solomon
+
+GEN_POLY = '100011101'              # polynomial: x^8 + x^4 + x^3 + x^2 + 1 :: 285 :: 0x11D
+CODE_GEN_POLY = [1, 59, 13, 104, 189, 68, 209, 30, 8, 163, 65, 41, 229, 98, 50, 36, 59]
+                                    # polynomial: x^16 + 59x^15 + 13x^14 + 104x^13 + 189x^12
+                                    #             68x^11 + 209x^10 + 30x^9 + 8x^8 + 163x^7
+                                    #             65x^6 + 41x^5 + 229x^4 + 98x^3 + 50x^2 + 36x + 59
+MIN_PRIM_ELEM = '000000010'         # primitive element (alpha): x :: 1
+
+# Perform multiplication within the Galois field using log and anti-log tables mod 255.
+# num1, num2 must be in decimal form.
+# returns decimal form product.
+def multiply(num1, num2):
+    if isinstance(num1, int) and isinstance(num2, int):
+        j_one, j_two = GF256_LOG[num1], GF256_LOG[num2]
+        j = (j_one + j_two) % 255
+        product = GF256_ANTILOG[j]
+        return product
+    else:
+        raise TypeError("Numbers must be integers")
+
+# Perform addition in the Galois field through bitwise XOR
+# num1, num2 must be in decimal form.
+# returns decimal form sum.
+# since subtraction is identical to addition in GF(256), we don't need a subtract function.
+def add(num1, num2):
+    if isinstance(num1, int) and isinstance(num2, int):
+        return num1 ^ num2
+    else:
+        raise TypeError("Numbers must be integers")
+
+# Perform division in the Galois field through the log tables.
+# num1, num2 must be in the correct order of divison desired: num1 / num2.
+# takes two decimal integers num1, num2 and returns a decimal integer product
+def divide(num1, num2):
+    if isinstance(num1, int) and isinstance(num2, int):
+        j_one, j_two = GF256_LOG[num1], GF256_LOG[num2]
+        j = (j_one - j_two) % 255
+        product = GF256_ANTILOG[j]
+        return product
+    else:
+        raise TypeError("Numbers must be integers")
