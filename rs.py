@@ -1,3 +1,5 @@
+import numpy as np
+
 """ 
 Irreducible polynomials order 8 for UTF-8 support
 https://codyplanteen.com/assets/rs/gf256_prim.pdf
@@ -327,3 +329,12 @@ def divide(num1, num2):
         return product
     else:
         raise TypeError("Numbers must be integers")
+
+# Message will be a two-dimensional array containing k-1 decimal (from 8-bit) symbols.
+def encode(message):
+    shift = N-K
+    shifted_poly = np.zeros(256)
+    for index, symbol in enumerate(message): # mumtiply through by x^(n-k) == shift indexes by n-k
+        new_index = (index+shift)%255
+        shifted_poly[new_index] = symbol
+    # now need to divide by generator polynomial
