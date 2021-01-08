@@ -347,13 +347,10 @@ def longDivide(u, v):
     for k in range(0, m-n+1):
         d = multiply(scale, int(r[k]))
         q[k] = d
-        vc = v.copy()
         for i, x in enumerate(v):
-            vc[i] = multiply(d, int(x))
-        # subtract also needs to be in group
-        #r[k:k+n+1] -= vc
+            v[i] = multiply(d, int(x))
         for j in range(k, k+n+1):
-            r[j] = add(int(r[j]), int(vc[j-k]))
+            r[j] = add(int(r[j]), int(v[j-k]))
     while NX.allclose(r[0], 0, rtol=1e-14) and (r.shape[-1] > 1):
         r = r[1:]
     return q, r
@@ -370,13 +367,21 @@ def encode(message):
     quotient, remainder = longDivide(shifted_poly, CODE_GEN_POLY)
     return quotient, np.append(shifted_poly, remainder)
 
-def findErrors(syndromes):
-    # Euclid's algorithm
-    # 1: divide S(x) by x^(2t)
-    x_2t = np.zeros((2*T)+1)
-    x_2t[2*T] = 1
-    quotient, remainder = longDivide(x_2t, syndromes)
-
+def euclid(f, g):
+    # Euclid's algorithm for GCM of polynomials
+    quotient, remainder = longDivide(f, g)
+    quotient_list = [quotient]
+    remainder_list = [remainder]
+    while remainder != [0.]:
+        quotient, remainder = longDivide(g, remainder)
+        quotient_list.append(quotient)
+        remainder_list.append(remainder)
+        g = remainder
+        remainder = remainder_list[-2]
+    if remainder_list[-1] == [0.]:
+        return remainder_list[-2]
+    else:
+        return remainder_list[-1]
 
 def genSyndromes(R_x):
     quotients, syndromes = [], []
@@ -388,9 +393,11 @@ def genSyndromes(R_x):
     # ensure syndrome equation is written in the correct direction
     # syndromes = np.flip(syndromes)
     if np.count_nonzero(syndromes) != 0:
-        err_locations, err_values = findErrors(syndromes)
+        f = np.zeros((2*T)+1)
+        f[2*T] = 1
+        gcd = euclid(f, syndromes)
     else:
         return 0
 
-q, r = longDivide([1, 0, 1], [1, 1])
+q, r = longDivide([1, 2, 1], [1, 2, 1])
 print(q, r)
