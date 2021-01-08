@@ -1,4 +1,7 @@
+from re import S
 import numpy as np
+from numpy.core import atleast_1d
+import numpy.core.numeric as NX
 
 """ 
 Irreducible polynomials order 8 for UTF-8 support
@@ -301,8 +304,8 @@ MIN_PRIM_ELEM = '000000010'         # primitive element (alpha): x :: 1
 # returns decimal form product.
 def multiply(num1, num2):
     if isinstance(num1, int) and isinstance(num2, int):
-        j_one, j_two = GF256_LOG[num1], GF256_LOG[num2]
-        j = (j_one + j_two) % 255
+        j_one, j_two = GF256_LOG[abs(num1)], GF256_LOG[abs(num2)]
+        j = (j_one + j_two) % N
         product = GF256_ANTILOG[j]
         return product
     else:
@@ -323,18 +326,71 @@ def add(num1, num2):
 # takes two decimal integers num1, num2 and returns a decimal integer product
 def divide(num1, num2):
     if isinstance(num1, int) and isinstance(num2, int):
-        j_one, j_two = GF256_LOG[num1], GF256_LOG[num2]
-        j = (j_one - j_two) % 255
+        j_one, j_two = GF256_LOG[abs(num1)], GF256_LOG[abs(num2)]
+        j = (j_one - j_two) % N
         product = GF256_ANTILOG[j]
         return product
     else:
         raise TypeError("Numbers must be integers")
 
+# Visciously stolen from numpy sourcecode and modified to work in GF(256)
+def longDivide(u, v):
+    u = atleast_1d(u) + 0.0
+    v = atleast_1d(v) + 0.0
+    # w has the common type
+    w = u[0] + v[0]
+    m = len(u) - 1
+    n = len(v) - 1
+    scale = divide(1, int(v[0]))
+    q = NX.zeros((max(m - n + 1, 1),), w.dtype)
+    r = u.astype(w.dtype)
+    for k in range(0, m-n+1):
+        d = multiply(scale, int(r[k]))
+        q[k] = d
+        vc = v.copy()
+        for i, x in enumerate(v):
+            vc[i] = multiply(d, int(x))
+        # subtract also needs to be in group
+        #r[k:k+n+1] -= vc
+        for j in range(k, k+n+1):
+            r[j] = add(int(r[j]), int(vc[j-k]))
+    while NX.allclose(r[0], 0, rtol=1e-14) and (r.shape[-1] > 1):
+        r = r[1:]
+    return q, r
+
 # Message will be a two-dimensional array containing k-1 decimal (from 8-bit) symbols.
+# returns message*n^(N-K)+remainder=T(x)
 def encode(message):
     shift = N-K
-    shifted_poly = np.zeros(256)
+    shifted_poly = np.zeros(N+1)
     for index, symbol in enumerate(message): # mumtiply through by x^(n-k) == shift indexes by n-k
-        new_index = (index+shift)%255
+        new_index = (index+shift)%N
         shifted_poly[new_index] = symbol
-    # now need to divide by generator polynomial
+    # now need to divide by code generator polynomial
+    quotient, remainder = longDivide(shifted_poly, CODE_GEN_POLY)
+    return quotient, np.append(shifted_poly, remainder)
+
+def findErrors(syndromes):
+    # Euclid's algorithm
+    # 1: divide S(x) by x^(2t)
+    x_2t = np.zeros((2*T)+1)
+    x_2t[2*T] = 1
+    quotient, remainder = longDivide(x_2t, syndromes)
+
+
+def genSyndromes(R_x):
+    quotients, syndromes = [], []
+    for i in range(B, B+(2*T)):
+        Q_i, S_i = longDivide(R_x, [1,GF256_ANTILOG[i]])
+        quotients.append(Q_i)
+        syndromes.append(S_i)
+    quotients, syndromes = np.array(quotients), np.array(syndromes)
+    # ensure syndrome equation is written in the correct direction
+    # syndromes = np.flip(syndromes)
+    if np.count_nonzero(syndromes) != 0:
+        err_locations, err_values = findErrors(syndromes)
+    else:
+        return 0
+
+q, r = longDivide([1, 0, 1], [1, 1])
+print(q, r)
