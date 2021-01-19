@@ -27,14 +27,36 @@ if os.path.isfile('.GF256_ANTILOG'):
 else:
     raise FileNotFoundError('Could not load GF256 AntiLog table file')
 
+# x^4 + x + 1 :: [1,0,0,1,1] :: field gen poly
+
+ANTILOG_TABLE = {
+    0: 1,
+    1: 2,
+    2: 4,
+    3: 8,
+    4: 3,
+    5: 6,
+    6: 12,
+    7: 11,
+    8: 5,
+    9: 10,
+    10: 7,
+    11: 14,
+    12: 15,
+    13: 13,
+    14: 9,
+}
+
 LOG_TABLE = {a_j: j for j, a_j in ANTILOG_TABLE.items()}
 
 # Code-defining constants
 # As they are now, 4 errors can be corrected. This can be adjusted by changing these values.
 M = 8
 ALPHA = 2
-N = 255
-K = 239
+#N = 255
+#K = 239
+N = 15
+K = 11
 T = (N - K) // 2
 B = 0
 
@@ -49,25 +71,27 @@ CODE_GEN_POLY = [1, 59, 13, 104, 189, 68, 209, 30, 8, 163, 65, 41, 229, 98, 50, 
                                     #             65x^6 + 41x^5 + 229x^4 + 98x^3 + 50x^2 + 36x + 59
 MIN_PRIM_ELEM = '000000010'         # primitive element (alpha): x :: 1
 
-# Perform multiplication within the Galois field using log and anti-log tables mod 255.
-# num1, num2 must be in decimal form.
-# returns decimal form product.
-def multiply(num1, num2):
-    if isinstance(num1, int) and isinstance(num2, int):
-        j_one, j_two = LOG_TABLE[abs(num1)], LOG_TABLE[abs(num2)]
-        j = (j_one + j_two) % N
-        product = ANTILOG_TABLE[j]
-        return product
-    else:
-        raise TypeError("Numbers must be integers")
-
 # Perform addition in the Galois field through bitwise XOR
 # num1, num2 must be in decimal form.
 # returns decimal form sum.
 # since subtraction is identical to addition in GF(256), we don't need a subtract function.
 def add(num1, num2):
     if isinstance(num1, int) and isinstance(num2, int):
-        return num1 ^ num2
+        return abs(num1) ^ abs(num2)
+    else:
+        raise TypeError("Numbers must be integers")
+
+# can you make these the same function?
+
+# Perform multiplication within the Galois field using log and anti-log tables mod 255.
+# num1, num2 must be in decimal form.
+# returns decimal form product.
+def multiply(num1, num2):
+    if isinstance(num1, int) and isinstance(num2, int):
+        j_one, j_two = LOG_TABLE.get(abs(num1), 0), LOG_TABLE.get(abs(num2), 0)
+        j = (j_one + j_two) % N
+        product = ANTILOG_TABLE.get(j, 0)
+        return product
     else:
         raise TypeError("Numbers must be integers")
 
@@ -76,9 +100,9 @@ def add(num1, num2):
 # takes two decimal integers num1, num2 and returns a decimal integer product
 def divide(num1, num2):
     if isinstance(num1, int) and isinstance(num2, int):
-        j_one, j_two = LOG_TABLE[abs(num1)], LOG_TABLE[abs(num2)]
+        j_one, j_two = LOG_TABLE.get(abs(num1), 0), LOG_TABLE.get(abs(num2), 0)
         j = (j_one - j_two) % N
-        product = ANTILOG_TABLE[j]
+        product = ANTILOG_TABLE.get(j, 0)
         return product
     else:
         raise TypeError("Numbers must be integers")
@@ -133,7 +157,7 @@ def euclid(f, g):
 def genSyndromes(R_x):
     quotients, syndromes = [], []
     for i in range(B, B+(2*T)):
-        Q_i, S_i = longDivide(R_x, [1,ANTILOG_TABLE[i]])
+        Q_i, S_i = longDivide(R_x, [1,ANTILOG_TABLE.get(i, 0)])
         quotients.append(Q_i)
         syndromes.append(S_i)
     quotients, syndromes = np.array(quotients), np.array(syndromes)
@@ -146,8 +170,11 @@ def genSyndromes(R_x):
     else:
         return 0
 
-#q, r = longDivide([1, 2, 1], [1, 2, 1])
-#print(q, r)
+q, r = longDivide([7,7,9],[2,13])
+print(q, r)
 
-gcd = euclid([1,7,6], [1, 5, 6])
-print(gcd)
+#gcd = euclid([1,7,6], [1, 5, 6])
+#print(gcd)
+
+#result = add(10, 13)
+#print(result)
