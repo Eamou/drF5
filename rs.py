@@ -369,19 +369,16 @@ def encode(message):
 
 def euclid(f, g):
     # Euclid's algorithm for GCM of polynomials
-    quotient, remainder = longDivide(f, g)
-    quotient_list = [quotient]
-    remainder_list = [remainder]
-    while remainder != [0.]:
-        quotient, remainder = longDivide(g, remainder)
-        quotient_list.append(quotient)
-        remainder_list.append(remainder)
-        g = remainder
-        remainder = remainder_list[-2]
-    if remainder_list[-1] == [0.]:
-        return remainder_list[-2]
-    else:
-        return remainder_list[-1]
+    q_list, r_list = [], []
+    while not np.array_equal(g, [0.]):
+        q, r = longDivide(f, g)
+        q_list.append(q)
+        r_list.append(r)
+        f = g
+        g = r
+    # return the second last remainder = return the last non-zero remainder (gcm)
+    return r_list[-2]
+
 
 def genSyndromes(R_x):
     quotients, syndromes = [], []
@@ -399,5 +396,8 @@ def genSyndromes(R_x):
     else:
         return 0
 
-q, r = longDivide([1, 2, 1], [1, 2, 1])
-print(q, r)
+#q, r = longDivide([1, 2, 1], [1, 2, 1])
+#print(q, r)
+
+gcd = euclid([1,7,6], [1, 5, 6])
+print(gcd)
