@@ -88,8 +88,10 @@ def add(num1, num2):
 # returns decimal form product.
 def multiply(num1, num2):
     if isinstance(num1, int) and isinstance(num2, int):
-        j_one, j_two = LOG_TABLE.get(abs(num1), 0), LOG_TABLE.get(abs(num2), 0)
-        j = (j_one + j_two) % N
+        if num1 == 0 or num2 == 0:
+            return 0
+        j1, j2 = LOG_TABLE.get(abs(num1), 0), LOG_TABLE.get(abs(num2), 0)
+        j = (j1 + j2) % N
         product = ANTILOG_TABLE.get(j, 0)
         return product
     else:
@@ -100,10 +102,13 @@ def multiply(num1, num2):
 # takes two decimal integers num1, num2 and returns a decimal integer product
 def divide(num1, num2):
     if isinstance(num1, int) and isinstance(num2, int):
-        j_one, j_two = LOG_TABLE.get(abs(num1), 0), LOG_TABLE.get(abs(num2), 0)
-        j = (j_one - j_two) % N
-        product = ANTILOG_TABLE.get(j, 0)
-        return product
+        if num1 == 0:
+            return 0
+        elif num2 == 0:
+            raise ZeroDivisionError('Cannot divide by zero in finite field')
+        j2_inv = (-1*LOG_TABLE[abs(num2)])%N # division is the same as multiplying by the inverse
+        num2_inv = ANTILOG_TABLE[j2_inv]
+        return multiply(num1, num2_inv)
     else:
         raise TypeError("Numbers must be integers")
 
@@ -115,12 +120,14 @@ def longDivide(u, v):
     w = u[0] + v[0]
     m = len(u) - 1
     n = len(v) - 1
-    scale = divide(1, int(v[0]))
+    q_scale = divide(1, int(v[0]))
     q = NX.zeros((max(m - n + 1, 1),), w.dtype)
     r = u.astype(w.dtype)
     for k in range(0, m-n+1):
+        scale = divide(1, int(v[0]))
         d = multiply(scale, int(r[k]))
-        q[k] = d
+        d_q = multiply(q_scale, int(r[k]))
+        q[k] = d_q
         for i, x in enumerate(v):
             v[i] = multiply(d, int(x))
         for j in range(k, k+n+1):
@@ -153,7 +160,6 @@ def euclid(f, g):
     # return the second last remainder = return the last non-zero remainder (gcm)
     return r_list[-2]
 
-
 def genSyndromes(R_x):
     quotients, syndromes = [], []
     for i in range(B, B+(2*T)):
@@ -169,12 +175,3 @@ def genSyndromes(R_x):
         gcd = euclid(f, syndromes)
     else:
         return 0
-
-q, r = longDivide([7,7,9],[2,13])
-print(q, r)
-
-#gcd = euclid([1,7,6], [1, 5, 6])
-#print(gcd)
-
-#result = add(10, 13)
-#print(result)
