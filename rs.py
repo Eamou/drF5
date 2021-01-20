@@ -64,12 +64,12 @@ B = 0
 # Changing these will mean the rest of the code will function incorrectly, if at all.
 # They are the 'unique key' of this particular implementation of Reed-Solomon
 
-GEN_POLY = '100011101'              # polynomial: x^8 + x^4 + x^3 + x^2 + 1 :: 285 :: 0x11D
+GEN_POLY = [1,0,0,0,1,1,1,0,1]      # polynomial: x^8 + x^4 + x^3 + x^2 + 1 :: 285 :: 0x11D
 CODE_GEN_POLY = [1, 59, 13, 104, 189, 68, 209, 30, 8, 163, 65, 41, 229, 98, 50, 36, 59]
                                     # polynomial: x^16 + 59x^15 + 13x^14 + 104x^13 + 189x^12
                                     #             68x^11 + 209x^10 + 30x^9 + 8x^8 + 163x^7
                                     #             65x^6 + 41x^5 + 229x^4 + 98x^3 + 50x^2 + 36x + 59
-MIN_PRIM_ELEM = '000000010'         # primitive element (alpha): x :: 1
+MIN_PRIM_ELEM = [1, 0]              # primitive element (alpha): x :: 1 :: '000000010'
 
 # Perform addition in the Galois field through bitwise XOR
 # num1, num2 must be in decimal form.
@@ -80,8 +80,6 @@ def add(num1, num2):
         return abs(num1) ^ abs(num2)
     else:
         raise TypeError("Numbers must be integers")
-
-# can you make these the same function?
 
 # Perform multiplication within the Galois field using log and anti-log tables mod 255.
 # num1, num2 must be in decimal form.
@@ -112,7 +110,7 @@ def divide(num1, num2):
     else:
         raise TypeError("Numbers must be integers")
 
-# Visciously stolen from numpy sourcecode and modified to work in GF(256)
+# Visciously stolen from numpy sourcecode and modified to work in GFs
 def longDivide(u, v):
     u = atleast_1d(u) + 0.0
     v = atleast_1d(v) + 0.0
@@ -136,6 +134,18 @@ def longDivide(u, v):
         r = r[1:]
     return q, r
 
+# Perform polynomial multiplication within the finite field.
+# The length of two multiplied polynomial can be taken as the sum of the
+# largest degrees of each. In list form, this is the length-1. We then add 1
+# to include a constant at the end. so len-1 + len-1 + 1 = len + len -1
+def polyMult(poly1, poly2):
+    prod_len = len(poly1) + len(poly2) - 1
+    prod = np.zeros(prod_len)
+    for i, val1 in enumerate(poly1):
+        for j, val2 in enumerate(poly2):
+            prod[i+j] = add(int(prod[i+j]), multiply(int(val1), int(val2)))
+    return np.trim_zeros(prod, 'f')
+
 # Message will be a two-dimensional array containing k-1 decimal (from 8-bit) symbols.
 # returns message*n^(N-K)+remainder=T(x)
 def encode(message):
@@ -151,6 +161,7 @@ def encode(message):
 def euclid(f, g):
     # Euclid's algorithm for GCM of polynomials
     q_list, r_list = [], []
+    # Stop if remainder is 0
     while not np.array_equal(g, [0.]):
         q, r = longDivide(f, g)
         q_list.append(q)
@@ -159,6 +170,12 @@ def euclid(f, g):
         g = r
     # return the second last remainder = return the last non-zero remainder (gcm)
     return r_list[-2]
+
+def solveSyndromes(Sx):
+    # f = x^(2t)
+    f = np.zeros((2*T)+1)
+    f[0] = 1
+    gcd = euclid(f, Sx)
 
 def genSyndromes(R_x):
     quotients, syndromes = [], []
@@ -170,8 +187,7 @@ def genSyndromes(R_x):
     # ensure syndrome equation is written in the correct direction
     # syndromes = np.flip(syndromes)
     if np.count_nonzero(syndromes) != 0:
-        f = np.zeros((2*T)+1)
-        f[2*T] = 1
-        gcd = euclid(f, syndromes)
+        loc_poly, mag_poly = solveSyndromes(syndromes)
+        return loc_poly, mag_poly
     else:
         return 0
