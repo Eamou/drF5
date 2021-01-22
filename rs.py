@@ -110,8 +110,23 @@ def divide(num1, num2):
     else:
         raise TypeError("Numbers must be integers")
 
+
+# Adds two polynomials of arbitrary lengths together under the GF
+def polyAdd(poly1, poly2):
+    len1, len2 = len(poly1), len(poly2)
+    len_diff = len1 - len2
+    if len_diff < 0:
+        poly1 = np.pad(poly1, (abs(len_diff), 0), mode='constant')
+    elif len_diff > 0:
+        poly2 = np.pad(poly2, (len_diff, 0), mode='constant')
+    final_len = len(poly1)
+    poly_sum = np.zeros(final_len)
+    for i in range(final_len):
+        poly_sum[i] = add(int(poly1[i]), int(poly2[i]))
+    return poly_sum
+
 # Visciously stolen from numpy sourcecode and modified to work in GFs
-def longDivide(u, v):
+def polyDiv(u, v):
     u = atleast_1d(u) + 0.0
     v = atleast_1d(v) + 0.0
     # w has the common type
@@ -155,15 +170,16 @@ def encode(message):
         new_index = (index+shift)%N
         shifted_poly[new_index] = symbol
     # now need to divide by code generator polynomial
-    quotient, remainder = longDivide(shifted_poly, CODE_GEN_POLY)
+    quotient, remainder = polyDiv(shifted_poly, CODE_GEN_POLY)
     return quotient, np.append(shifted_poly, remainder)
 
 def euclid(f, g):
     # Euclid's algorithm for GCM of polynomials
     q_list, r_list = [], []
     # Stop if remainder is 0
+    # while not np.array_equal(g, [0.]):
     while not np.array_equal(g, [0.]):
-        q, r = longDivide(f, g)
+        q, r = polyDiv(f, g)
         q_list.append(q)
         r_list.append(r)
         f = g
@@ -171,16 +187,37 @@ def euclid(f, g):
     # return the second last remainder = return the last non-zero remainder (gcm)
     return r_list[-2]
 
+def polyEuclid(f, g):
+    # Euclid's algorithm for GCM of polynomials
+    q_list, r_list = [], []
+    # Stop if remainder is 0
+    # while not np.array_equal(g, [0.]):
+    while len(g)-1 >= T:
+        q, r = polyDiv(f, g)
+        q_list.append(q)
+        r_list.append(r)
+        f = g
+        g = r
+    # return the second last remainder = return the last non-zero remainder (gcm)
+    return r_list[-1], q_list
+
 def solveSyndromes(Sx):
     # f = x^(2t)
     f = np.zeros((2*T)+1)
     f[0] = 1
-    gcd = euclid(f, Sx)
+    mag_poly, q_list = polyEuclid(f, Sx)
+    # Initial sum value must be 0, initial value must be 1
+    isv, iv = [0], [1]
+    for poly in q_list:
+        loc_poly = polyAdd(isv, polyMult(iv, poly))
+        isv = iv
+        iv = poly
+    return loc_poly, mag_poly
 
 def genSyndromes(R_x):
     quotients, syndromes = [], []
     for i in range(B, B+(2*T)):
-        Q_i, S_i = longDivide(R_x, [1,ANTILOG_TABLE.get(i, 0)])
+        Q_i, S_i = polyDiv(R_x, [1,ANTILOG_TABLE.get(i, 0)])
         quotients.append(Q_i)
         syndromes.append(S_i)
     quotients, syndromes = np.array(quotients), np.array(syndromes)
@@ -191,3 +228,10 @@ def genSyndromes(R_x):
         return loc_poly, mag_poly
     else:
         return 0
+
+#print(polyDiv([3, 14], [9]))
+#print(polyDiv([7,7,9], [9]))
+#print(polyMult([3,14],[7]))
+#print(polyAdd([7,7,8], [0,7,0]))
+#print(euclid([7,7,9], [3,14]))
+print(solveSyndromes([7,2,11,13]))
