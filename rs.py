@@ -134,6 +134,7 @@ def polyAdd(poly1, poly2):
 def polyDiv(u, v):
     u = atleast_1d(u) + 0.0
     v = atleast_1d(v) + 0.0
+    v_original = v.copy()
     # w has the common type
     w = u[0] + v[0]
     m = len(u) - 1
@@ -142,10 +143,16 @@ def polyDiv(u, v):
     q = NX.zeros((max(m - n + 1, 1),), w.dtype)
     r = u.astype(w.dtype)
     for k in range(0, m-n+1):
-        scale = divide(1, int(v[0]))
+        #print(f"line {k}:", v, r, v[0], r[k])
+        if int(v[0]) == 0:
+            scale = 1
+        else:
+            scale = divide(1, int(v[0]))
         d = multiply(scale, int(r[k]))
         d_q = multiply(q_scale, int(r[k]))
         q[k] = d_q
+        if not np.any(v):
+            v = v_original.copy()
         for i, x in enumerate(v):
             v[i] = multiply(d, int(x))
         for j in range(k, k+n+1):
@@ -185,18 +192,6 @@ def polyVal(poly, val):
         result = add(result, multiply(coef, exponent(val, deg-i)))
     result = add(result, poly[-1])
     return result
-
-# Message will be a two-dimensional array containing k-1 decimal (from 8-bit) symbols.
-# returns message*n^(N-K)+remainder=T(x)
-def encode(message):
-    shift = N-K
-    shifted_poly = np.zeros(N+1)
-    for index, symbol in enumerate(message): # mumtiply through by x^(n-k) == shift indexes by n-k
-        new_index = (index+shift)%N
-        shifted_poly[new_index] = symbol
-    # now need to divide by code generator polynomial
-    quotient, remainder = polyDiv(shifted_poly, CODE_GEN_POLY)
-    return quotient, np.append(shifted_poly, remainder)
 
 # Euclid's algorithm for finding the GCM of two polynomials
 # Takes two arrays, returns one array (GCM).
@@ -276,7 +271,25 @@ def detectErrors(R_x):
     else:
         return 0
 
-print(detectErrors([1,2,3,4,5,11,7,8,9,10,11,3,1,12,12]))
+# Message will be a two-dimensional array containing k-1 decimal (from 8-bit) symbols.
+# returns message*n^(N-K)+remainder=T(x)
+def encode(message):
+    if len(message) > K:
+        raise ValueError('Message too long, length:', len(message))
+    # multiply by x^(2t) same as appending 2t 0s
+    for i in range(N-K):
+        message.append(0)
+    # now need to divide by code generator polynomial
+    _, remainder = polyDiv(message, CODE_GEN_POLY)
+    message = np.trim_zeros(message, 'b')
+    message = np.append(message, remainder)
+    return message
+
+#print(polyDiv([1,2,3,4,5,6,7,8,9,10,11,0,0,0,0], [1,15,3,1,12]))
+
+print(encode([1,2,3,4,5,6,7,8,9,10,11]))
+
+#print(detectErrors([1,2,3,4,5,11,7,8,9,10,11,3,1,12,12]))
 
 #print(polyDiv([3, 14], [9]))
 #print(polyDiv([7,7,9], [9]))
