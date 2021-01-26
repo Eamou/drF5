@@ -5,6 +5,8 @@ import numpy.core.numeric as NX
 import pickle
 import os.path
 
+from numpy.testing._private.utils import KnownFailureException
+
 """ 
 Irreducible polynomials order 8 for UTF-8 support
 https://codyplanteen.com/assets/rs/gf256_prim.pdf
@@ -253,6 +255,14 @@ def findErrors(loc_poly, mag_poly):
             errors.append([j,err_mag])
     return errors
 
+# Amends errors in received message
+# Takes two arrays as input, returns one array
+def fixErrors(R_x, errors):
+    l = len(R_x)-1
+    for i, mag in errors:
+        R_x[l-i] = add(R_x[l-i], mag)
+    return R_x
+
 # Finds the locations and magnitudes of errors in the received message R_x
 # if they exist.
 # Takes an array as input returns an array containing errors or 0 if none.
@@ -267,9 +277,10 @@ def detectErrors(R_x):
     if np.count_nonzero(syndromes) != 0:
         loc_poly, mag_poly = solveSyndromes(syndromes)
         errors = findErrors(loc_poly, mag_poly)
-        return errors
-    else:
-        return 0
+        if len(errors) > T:
+            raise KnownFailureException(f'Errors in message exceed correction capacity. Errors: {len(errors)}, Capacity: {T}')
+        R_x = fixErrors(R_x, errors)
+    return R_x
 
 # Message will be a two-dimensional array containing k-1 decimal (from 8-bit) symbols.
 # returns message*n^(N-K)+remainder=T(x)
@@ -289,7 +300,7 @@ def encode(message):
 
 print(encode([1,2,3,4,5,6,7,8,9,10,11]))
 
-#print(detectErrors([1,2,3,4,5,11,7,8,9,10,11,3,1,12,12]))
+print(detectErrors([1,2,3,4,5,11,7,8,9,10,11,3,1,12,12]))
 
 #print(polyDiv([3, 14], [9]))
 #print(polyDiv([7,7,9], [9]))
