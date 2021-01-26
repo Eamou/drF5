@@ -4,7 +4,6 @@ from numpy.core import atleast_1d
 import numpy.core.numeric as NX
 import pickle
 import os.path
-
 from numpy.testing._private.utils import KnownFailureException
 
 """ 
@@ -29,26 +28,6 @@ if os.path.isfile('.GF256_ANTILOG'):
 else:
     raise FileNotFoundError('Could not load GF256 AntiLog table file')
 
-# x^4 + x + 1 :: [1,0,0,1,1] :: field gen poly
-
-ANTILOG_TABLE = {
-    0: 1,
-    1: 2,
-    2: 4,
-    3: 8,
-    4: 3,
-    5: 6,
-    6: 12,
-    7: 11,
-    8: 5,
-    9: 10,
-    10: 7,
-    11: 14,
-    12: 15,
-    13: 13,
-    14: 9,
-}
-
 LOG_TABLE = {a_j: j for j, a_j in ANTILOG_TABLE.items()}
 
 # Code-defining constants
@@ -57,8 +36,8 @@ M = 8
 ALPHA = 2
 #N = 255
 #K = 239
-N = 15
-K = 11
+N = 255
+K = 239
 T = (N - K) // 2
 B = 0
 
@@ -66,15 +45,14 @@ B = 0
 # Changing these will mean the rest of the code will function incorrectly, if at all.
 # They are the 'unique key' of this particular implementation of Reed-Solomon
 
-#GEN_POLY = [1,0,0,0,1,1,1,0,1]      # polynomial: x^8 + x^4 + x^3 + x^2 + 1 :: 285 :: 0x11D
-#CODE_GEN_POLY = [1, 59, 13, 104, 189, 68, 209, 30, 8, 163, 65, 41, 229, 98, 50, 36, 59]
+GEN_POLY = [1,0,0,0,1,1,1,0,1]      # polynomial: x^8 + x^4 + x^3 + x^2 + 1 :: 285 :: 0x11D
+CODE_GEN_POLY = [1, 59, 13, 104, 189, 68, 209, 30, 8, 163, 65, 41, 229, 98, 50, 36, 59]
                                     # polynomial: x^16 + 59x^15 + 13x^14 + 104x^13 + 189x^12
                                     #             68x^11 + 209x^10 + 30x^9 + 8x^8 + 163x^7
                                     #             65x^6 + 41x^5 + 229x^4 + 98x^3 + 50x^2 + 36x + 59
 #MIN_PRIM_ELEM = [1, 0]              # primitive element (alpha): x :: 1 :: '000000010'
-
-GEN_POLY = [1,0,0,1,1]
-CODE_GEN_POLY = [1,15,3,1,12]
+#GEN_POLY = [1,0,0,1,1]             # x^4 + x + 1 :: [1,0,0,1,1] :: field gen poly
+#CODE_GEN_POLY = [1,15,3,1,12]
 
 # Perform addition in the Galois field through bitwise XOR
 # num1, num2 must be in decimal form.
@@ -296,17 +274,19 @@ def encode(message):
     message = np.append(message, remainder)
     return message
 
-#print(polyDiv([1,2,3,4,5,6,7,8,9,10,11,0,0,0,0], [1,15,3,1,12]))
+# Converts message bitstring into polynomial with decimal coefficients
+# Takes string as input, returns array
+def prepareBitString(bitstring):
+    blocks, block_size = len(bitstring), 8
+    message = [ bitstring[i:i+block_size] for i in range(0, blocks, block_size) ]
+    message = [int(i, 2) for i in message]
+    return message
 
-print(encode([1,2,3,4,5,6,7,8,9,10,11]))
-
-print(detectErrors([1,2,3,4,5,11,7,8,9,10,11,3,1,12,12]))
-
-#print(polyDiv([3, 14], [9]))
-#print(polyDiv([7,7,9], [9]))
-#print(polyMult([3,14],[7]))
-#print(polyAdd([7,7,8], [0,7,0]))
-#print(euclid([7,7,9], [3,14]))
-#print(solveSyndromes([11,11,5]))
-#print(findErrors([6, 14],[10]))
-#print(multiply(12, divide(10, 6)))
+bitstring = '011100100110010101100101011001000010000001110011011011110110110001101111011011010110111101101110'
+message_poly = prepareBitString(bitstring)
+encoded_poly = encode(message_poly)
+print(message_poly, encoded_poly)
+#error_poly = encoded_poly.copy()
+#error_poly[0] = error_poly[0]+1
+#corrected_poly = detectErrors(error_poly)
+#print(f'Original: {encoded_poly}\nErrored: {error_poly}\nFinal: {corrected_poly}')
