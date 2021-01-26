@@ -560,7 +560,7 @@ def messageConv(message):
     bin_string = ""
     for char in message:
         bin_val = bin(ord(char))[2:]
-        while len(bin_val) < 7:
+        while len(bin_val) < 8:
             bin_val = '0' + bin_val
         bin_string += bin_val
     return bin_string
@@ -687,8 +687,9 @@ except:
     print("Please enter a string")
     quit(1)
 """
-message = "lttstore.com"
+message = "reed solomon"
 bin_msg = messageConv(message)
+print(len(bin_msg), bin_msg)
 if len(bin_msg) > MAX_PAYLOAD:
     raise ValueError('Message too long')
 
@@ -750,7 +751,6 @@ Y_dc_arr, Y_ac_arr = RLEandDPCM(Y_zz_img)
 Cb_dc_arr, Cb_ac_arr = RLEandDPCM(Cb_zz_img)
 Cr_dc_arr, Cr_ac_arr = RLEandDPCM(Cr_zz_img)
 print("finished rle")
-#print("rle", Y_ac_arr)
 
 # Huffman coding
 

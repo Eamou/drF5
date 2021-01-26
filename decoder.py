@@ -491,7 +491,7 @@ def extractMessage(msg_path, Y_zz_img, Cb_zz_img, Cr_zz_img):
     char, message = '', ''
     for bit in bit_msg:
         char += bit
-        if len(char) == 7:
+        if len(char) == 8:
             letter = chr(int(char, 2))
             message += letter
             char = ''
@@ -542,7 +542,6 @@ ver_block_count = img_height // BLOCK_SIZE
 # extract data from Huffman encoding
 Y_decoded_img, Cb_decoded_img, Cr_decoded_img = huffmanDecode(bitstring)
 print("finished decode")
-#print(Y_decoded_img[1632])
 
 # restore Huffman data to 64-len zigzag arrays
 Y_zz_img = unRLE(Y_decoded_img)
