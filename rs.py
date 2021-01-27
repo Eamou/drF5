@@ -4,6 +4,7 @@ from numpy.core import atleast_1d
 import numpy.core.numeric as NX
 import pickle
 import os.path
+from numpy.lib.polynomial import poly
 from numpy.testing._private.utils import KnownFailureException
 
 """ 
@@ -22,8 +23,8 @@ With this information we are ready to perform the calculative functions required
 
 # Table 2: 0x11D
 
-if os.path.isfile('.GF256_ANTILOG'):
-    with open('.GF256_ANTILOG', 'rb') as fp:
+if os.path.isfile('.GF16_ANTILOG'):
+    with open('.GF16_ANTILOG', 'rb') as fp:
         ANTILOG_TABLE = pickle.load(fp)
 else:
     raise FileNotFoundError('Could not load GF256 AntiLog table file')
@@ -36,8 +37,8 @@ M = 8
 ALPHA = 2
 #N = 255
 #K = 239
-N = 255
-K = 239
+N = 15
+K = 11
 T = (N - K) // 2
 B = 0
 
@@ -45,14 +46,14 @@ B = 0
 # Changing these will mean the rest of the code will function incorrectly, if at all.
 # They are the 'unique key' of this particular implementation of Reed-Solomon
 
-GEN_POLY = [1,0,0,0,1,1,1,0,1]      # polynomial: x^8 + x^4 + x^3 + x^2 + 1 :: 285 :: 0x11D
-CODE_GEN_POLY = [1, 59, 13, 104, 189, 68, 209, 30, 8, 163, 65, 41, 229, 98, 50, 36, 59]
+#GEN_POLY = [1,0,0,0,1,1,1,0,1]      # polynomial: x^8 + x^4 + x^3 + x^2 + 1 :: 285 :: 0x11D
+#CODE_GEN_POLY = [1, 59, 13, 104, 189, 68, 209, 30, 8, 163, 65, 41, 229, 98, 50, 36, 59]
                                     # polynomial: x^16 + 59x^15 + 13x^14 + 104x^13 + 189x^12
                                     #             68x^11 + 209x^10 + 30x^9 + 8x^8 + 163x^7
                                     #             65x^6 + 41x^5 + 229x^4 + 98x^3 + 50x^2 + 36x + 59
 #MIN_PRIM_ELEM = [1, 0]              # primitive element (alpha): x :: 1 :: '000000010'
-#GEN_POLY = [1,0,0,1,1]             # x^4 + x + 1 :: [1,0,0,1,1] :: field gen poly
-#CODE_GEN_POLY = [1,15,3,1,12]
+GEN_POLY = [1,0,0,1,1]             # x^4 + x + 1 :: [1,0,0,1,1] :: field gen poly
+CODE_GEN_POLY = [1,15,3,1,12]
 
 # Perform addition in the Galois field through bitwise XOR
 # num1, num2 must be in decimal form.
@@ -158,6 +159,8 @@ def polyMult(poly1, poly2):
 # Receives two integers, returns one integer.
 def exponent(val, exp):
     result = val
+    if exp == 0:
+        return 1
     for i in range(exp-1):
         result = multiply(result, val)
     return result
@@ -167,11 +170,12 @@ def exponent(val, exp):
 def polyVal(poly, val):
     result = 0
     deg = len(poly)-1
-    for i in range(len(poly)-1):
-        coef = poly[i]
+    for i, coef in enumerate(poly):
         result = add(result, multiply(coef, exponent(val, deg-i)))
-    result = add(result, poly[-1])
     return result
+
+
+#print("TEST:", polyVal([14,14,1],ANTILOG_TABLE[(-j)%N]))
 
 # Euclid's algorithm for finding the GCM of two polynomials
 # Takes two arrays, returns one array (GCM).
@@ -191,6 +195,7 @@ def euclid(f, g):
 # Finds the magnitude polynomial from dividing x^(2t) by the Syndrome equation
 # Takes two arrays as input and returns two arrays (polynomial, list of quotients)
 def polyEuclid(f, g):
+    g = np.trim_zeros(g, 'f')
     # Euclid's algorithm for GCM of polynomials
     q_list, r_list = [], []
     # Stop if remainder is 0
@@ -219,6 +224,16 @@ def solveSyndromes(S_x):
         iv = poly
     return loc_poly, mag_poly
 
+# Finds derivative of polynomial within finite field.
+# This is the same as setting even powers to 0.
+# Reveives one array, returns one array
+def derviative(poly):
+    for i in range(len(poly)):
+        if (i % 2) == 0:
+            poly[i] = 0
+    poly = poly[:-1]
+    return np.trim_zeros(poly, 'f')
+
 # Finds the errors given the location and magnitude polynomials 
 # derived from the Syndrome equation.
 # Takes two arrays as input and returns an array.
@@ -226,10 +241,11 @@ def findErrors(loc_poly, mag_poly):
     errors = []
     for j in range(N):
         alpha_j = ANTILOG_TABLE[j]
-        alpha_neg_j = ANTILOG_TABLE[-j%15]
+        alpha_neg_j = ANTILOG_TABLE[-j%N]
         loc_val = polyVal(loc_poly, alpha_neg_j)
         if loc_val == 0:
-            err_mag = multiply(alpha_j, divide(polyVal(mag_poly, alpha_neg_j), loc_poly[0]))
+            loc_poly_prime = derviative(loc_poly.copy())
+            err_mag = multiply(alpha_j, divide(polyVal(mag_poly, alpha_neg_j), polyVal(loc_poly_prime, alpha_neg_j)))
             errors.append([j,err_mag])
     return errors
 
@@ -282,11 +298,12 @@ def prepareBitString(bitstring):
     message = [int(i, 2) for i in message]
     return message
 
-bitstring = '011100100110010101100101011001000010000001110011011011110110110001101111011011010110111101101110'
-message_poly = prepareBitString(bitstring)
-encoded_poly = encode(message_poly)
-print(message_poly, encoded_poly)
-#error_poly = encoded_poly.copy()
+#bitstring = '011100100110010101100101011001000010000001110011011011110110110001101111011011010110111101101110'
+#message_poly = prepareBitString(bitstring)
+encoded_poly = encode([1,2,3,4,5,6,7,8,9,10,11])
+encoded_poly[5] = add(encoded_poly[5], 13)
+encoded_poly[12] = add(encoded_poly[12], 2)
+print("encoded:", encoded_poly)
 #error_poly[0] = error_poly[0]+1
-#corrected_poly = detectErrors(error_poly)
-#print(f'Original: {encoded_poly}\nErrored: {error_poly}\nFinal: {corrected_poly}')
+corrected_poly = detectErrors(encoded_poly)
+print("corrected:",corrected_poly)
