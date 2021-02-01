@@ -108,7 +108,7 @@ def polyAdd(poly1, poly2):
     final_len = len(poly1)
     poly_sum = np.zeros(final_len)
     for i in range(final_len):
-        poly_sum[i] = add(int(poly1[i]), int(poly2[i]))
+        poly_sum[i] = add(poly1[i], poly2[i])
     return poly_sum
 
 # Visciously stolen from numpy sourcecode and modified to work in GFs
@@ -120,7 +120,7 @@ def polyDiv(u, v):
     w = u[0] + v[0]
     m = len(u) - 1
     n = len(v) - 1
-    q_scale = divide(1, int(v[0]))
+    q_scale = divide(1, v[0])
     q = NX.zeros((max(m - n + 1, 1),), w.dtype)
     r = u.astype(w.dtype)
     for k in range(0, m-n+1):
@@ -128,16 +128,16 @@ def polyDiv(u, v):
         if int(v[0]) == 0:
             scale = 1
         else:
-            scale = divide(1, int(v[0]))
-        d = multiply(scale, int(r[k]))
-        d_q = multiply(q_scale, int(r[k]))
+            scale = divide(1, v[0])
+        d = multiply(scale, r[k])
+        d_q = multiply(q_scale, r[k])
         q[k] = d_q
         if not np.any(v):
             v = v_original.copy()
         for i, x in enumerate(v):
-            v[i] = multiply(d, int(x))
+            v[i] = multiply(d, x)
         for j in range(k, k+n+1):
-            r[j] = add(int(r[j]), int(v[j-k]))
+            r[j] = add(r[j], v[j-k])
     while NX.allclose(r[0], 0, rtol=1e-14) and (r.shape[-1] > 1):
         r = r[1:]
     return q, r
@@ -151,7 +151,7 @@ def polyMult(poly1, poly2):
     prod = np.zeros(prod_len)
     for i, val1 in enumerate(poly1):
         for j, val2 in enumerate(poly2):
-            prod[i+j] = add(int(prod[i+j]), multiply(int(val1), int(val2)))
+            prod[i+j] = add(prod[i+j], multiply(val1, val2))
     prod = np.trim_zeros(prod, 'f')
     return prod.tolist()
 
@@ -228,8 +228,13 @@ def solveSyndromes(S_x):
 # This is the same as setting even powers to 0.
 # Reveives one array, returns one array
 def derviative(poly):
+    poly_len = len(poly)
+    if poly_len == 0:
+        return []
+    deg = poly_len-1
     for i in range(len(poly)):
-        if (i % 2) == 0:
+        power = deg - i
+        if (power % 2) == 0:
             poly[i] = 0
     poly = poly[:-1]
     return np.trim_zeros(poly, 'f')
@@ -266,6 +271,7 @@ def detectErrors(R_x):
         alpha_i = ANTILOG_TABLE[i]
         S_i = polyVal(R_x, alpha_i)
         syndromes.insert(0, S_i)
+    syndromes = np.trim_zeros(syndromes, 'f')
     # ensure syndrome equation is written in the correct direction
     # syndromes = np.flip(syndromes)
     if np.count_nonzero(syndromes) != 0:
@@ -294,16 +300,22 @@ def encode(message):
 # Takes string as input, returns array
 def prepareBitString(bitstring):
     blocks, block_size = len(bitstring), 8
-    message = [ bitstring[i:i+block_size] for i in range(0, blocks, block_size) ]
+    message = [bitstring[i:i+block_size] for i in range(0, blocks, block_size)]
     message = [int(i, 2) for i in message]
     return message
 
 #bitstring = '011100100110010101100101011001000010000001110011011011110110110001101111011011010110111101101110'
 #message_poly = prepareBitString(bitstring)
 encoded_poly = encode([1,2,3,4,5,6,7,8,9,10,11])
-encoded_poly[5] = add(encoded_poly[5], 13)
-encoded_poly[12] = add(encoded_poly[12], 2)
-print("encoded:", encoded_poly)
+#encoded_poly[13] = add(encoded_poly[13], 1)
+#encoded_poly[3] = add(encoded_poly[3], 3)
+#encoded_poly[2] = add(encoded_poly[2], 1)
+#encoded_poly[1] = add(encoded_poly[1], 1)
+encoded_poly[14] = 3.
+#encoded_poly[13] = 3.
+#encoded_poly[12] = 1.
+#encoded_poly[11] = 1.
+print("encoded+error:", encoded_poly)
 #error_poly[0] = error_poly[0]+1
 corrected_poly = detectErrors(encoded_poly)
 print("corrected:",corrected_poly)
