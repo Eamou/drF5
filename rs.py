@@ -236,7 +236,7 @@ def derviative(poly):
         power = deg - i
         if (power % 2) == 0:
             poly[i] = 0
-    poly = poly[:-1]
+    poly = poly[:-1] # remove constant term
     return np.trim_zeros(poly, 'f')
 
 # Finds the errors given the location and magnitude polynomials 
@@ -272,10 +272,22 @@ def detectErrors(R_x):
         S_i = polyVal(R_x, alpha_i)
         syndromes.insert(0, S_i)
     syndromes = np.trim_zeros(syndromes, 'f')
+    #print(f'syndrome: {syndromes}')
     # ensure syndrome equation is written in the correct direction
     # syndromes = np.flip(syndromes)
     if np.count_nonzero(syndromes) != 0:
         loc_poly, mag_poly = solveSyndromes(syndromes)
+        loc_roots = []
+        for j in range(0,N):
+            alpha_j = ANTILOG_TABLE[j]
+            val = polyVal(loc_poly, alpha_j)
+            if val == 0:
+                loc_roots.append(alpha_j)
+        if len(loc_roots) != len(loc_poly)-1:
+            # if the locaction polynomial has num of roots unequal to its degree, too many errors.
+            raise Exception('Codeword contains too many errors')
+        #print(f'loc: {loc_poly}\nmag: {mag_poly}')
+        #print('roots of loc:', loc_roots)
         errors = findErrors(loc_poly, mag_poly)
         if len(errors) > T:
             raise KnownFailureException(f'Errors in message exceed correction capacity. Errors: {len(errors)}, Capacity: {T}')
@@ -312,10 +324,17 @@ encoded_poly = encode([1,2,3,4,5,6,7,8,9,10,11])
 #encoded_poly[2] = add(encoded_poly[2], 1)
 #encoded_poly[1] = add(encoded_poly[1], 1)
 encoded_poly[14] = 3.
-#encoded_poly[13] = 3.
-#encoded_poly[12] = 1.
-#encoded_poly[11] = 1.
+encoded_poly[13] = 3.
+encoded_poly[0] = 4.
 print("encoded+error:", encoded_poly)
 #error_poly[0] = error_poly[0]+1
 corrected_poly = detectErrors(encoded_poly)
 print("corrected:",corrected_poly)
+
+"""
+to do:
+when we know the locations of the errors, the error correction capacity is doubled.
+with jpeg cropping we will always know where the errors are as they will be unable to be read
+when attempting to read the message embedding path
+so add the functionality to action on this!
+"""
