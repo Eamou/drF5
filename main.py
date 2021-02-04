@@ -565,6 +565,7 @@ def messageConv(message):
         bin_string += bin_val
     return bin_string
 
+"""
 def genRandomPath(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img):
     bit_locations = []
     # choosing to store in the last 10 ac coefficients to reduce artefacts
@@ -596,6 +597,7 @@ def genRandomPath(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img):
                 bit_locations.append([component, two_d_location, index])
                 valid_index = True
     return bit_locations, Y_zz_img, Cb_zz_img, Cr_zz_img
+"""
 
 def padImageHeight(img):
     # repeat last row of pixels until dimension is multiple of 8
@@ -647,6 +649,42 @@ def writeHeader(bitstring):
 
     EOI = 'FFD9'
 
+def lsbF5(x):
+    if x < 0:
+        return (1 - x) % 2
+    else:
+        return x % 2
+
+def F5(msg, c1, c2, c3):
+    # shrinkage creates an error for the huffman coding - cannot have 0 as value for (skip, value)
+    # either find a way to fix this, or do this process before RLE.
+    # c1, c2, c3 = y,cb,cr
+    path = []
+    i = 0
+    rand_channel = 0
+    for rand_index, ac_block in enumerate(c1):
+        host = ac_block[0][1]
+        if host != 0.:
+            try:
+                msg_bit = msg[i]
+            except:
+                break
+            if lsbF5(host) == msg_bit:
+                path.append([rand_channel, rand_index])
+                i+=1
+                continue
+            else:
+                print("pre:", c1[rand_index][0])
+                c1[rand_index][0][1] = host - math.copysign(1, host)
+                print("post:", c1[rand_index][0])
+                if c1[rand_index][0][1] != 0:
+                    path.append([rand_channel, rand_index])
+                    i+=1
+                    continue
+    return path, c1, c2, c3
+
+
+
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
@@ -687,7 +725,7 @@ except:
     print("Please enter a string")
     quit(1)
 """
-message = "reed solomon"
+message = "hello"
 bin_msg = messageConv(message)
 print(len(bin_msg), bin_msg)
 if len(bin_msg) > MAX_PAYLOAD:
@@ -737,13 +775,6 @@ print("finished zigzag")
 # generate pseudo-random path for encoding message along
 # and encode message along path
 
-print("encoding message...")
-encode_path, Y_zz_img, Cb_zz_img, Cr_zz_img = genRandomPath(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
-#print(len(bin_msg), bin_msg, encode_path)
-with open('.msgpath', 'wb') as fp:
-    pickle.dump(encode_path, fp)
-print("encoded and written path to file")
-
 # encode DC coefficients ([0][0]) using DPCM
 # encode AC coefficients using RLE
 
@@ -751,6 +782,13 @@ Y_dc_arr, Y_ac_arr = RLEandDPCM(Y_zz_img)
 Cb_dc_arr, Cb_ac_arr = RLEandDPCM(Cb_zz_img)
 Cr_dc_arr, Cr_ac_arr = RLEandDPCM(Cr_zz_img)
 print("finished rle")
+#print(Y_ac_arr)
+print("encoding message...")
+encode_path, Y_ac_arr, Cb_ac_arr, Cr_ac_arr = F5(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr)
+print(encode_path)
+with open('.msgpath', 'wb') as fp:
+    pickle.dump(encode_path, fp)
+print("encoded and written path to file")
 
 # Huffman coding
 
