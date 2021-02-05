@@ -21,6 +21,10 @@ import pickle
 # as more letters will be included in an error-correcting chunk, reducing redundancy
 # overheads and increasing overall payload size.
 
+# constants
+MAX_COEF_NUM = 10
+BLOCK_SIZE = 8
+
 Y_quant_table = np.array([[
     16, 11, 10, 16, 24, 40, 51, 61],
 [12, 12, 14, 19, 26, 58, 60, 55],
@@ -651,47 +655,49 @@ def writeHeader(bitstring):
 
 def lsbF5(x):
     if x < 0:
-        return (1 - x) % 2
+        return int((1 - x) % 2)
     else:
-        return x % 2
+        return int(x % 2)
 
 def F5(msg, c1, c2, c3):
-    # shrinkage creates an error for the huffman coding - cannot have 0 as value for (skip, value)
-    # either find a way to fix this, or do this process before RLE.
     # c1, c2, c3 = y,cb,cr
     path = []
-    i = 0
+    i, j, row_i, block_i = 0, 1, 0, 0
     rand_channel = 0
-    for rand_index, ac_block in enumerate(c1):
-        host = ac_block[0][1]
-        if host != 0.:
-            try:
-                msg_bit = msg[i]
-            except:
-                break
-            if lsbF5(host) == msg_bit:
-                path.append([rand_channel, rand_index])
-                i+=1
-                continue
-            else:
-                print("pre:", c1[rand_index][0])
-                c1[rand_index][0][1] = host - math.copysign(1, host)
-                print("post:", c1[rand_index][0])
-                if c1[rand_index][0][1] != 0:
-                    path.append([rand_channel, rand_index])
+    num_coefs = (BLOCK_SIZE*BLOCK_SIZE)*hor_block_count*ver_block_count
+    # c1 = [row][block][coef]
+    while i<len(msg):
+        while j*block_i*row_i<num_coefs:
+            if j == 64:
+                block_i += 1
+                j = 1
+            if block_i == hor_block_count:
+                block_i = 0
+                row_i += 1
+            host = c1[row_i][block_i][j]
+            if host != 0.:
+                try:
+                    msg_bit = int(msg[i])
+                except:
+                    break
+                #print(f"host:{host} lsb:{lsbF5(host)} bit: {msg_bit}")
+                if lsbF5(host) == msg_bit:
+                    #print(msg_bit, i, "MATCH:", host)
+                    path.append([rand_channel, (row_i, block_i, j)])
                     i+=1
-                    continue
+                else:
+                    #print(msg_bit, i, ": NO MATCH:", host, "->", host, "-", math.copysign(1,host))
+                    host = host - math.copysign(1, host)
+                    if host != 0:
+                        c1[row_i][block_i][j] = host
+                        path.append([rand_channel, (row_i, block_i, j)])
+                        i+=1
+            j+=1
     return path, c1, c2, c3
-
-
 
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
-
-# constants
-MAX_COEF_NUM = 10
-BLOCK_SIZE = 8
 
 # read image (ability to input image name to be added later)
 # get image dimensions
@@ -725,9 +731,9 @@ except:
     print("Please enter a string")
     quit(1)
 """
-message = "hello"
+message = "reed solomon"
 bin_msg = messageConv(message)
-print(len(bin_msg), bin_msg)
+#print(len(bin_msg), bin_msg)
 if len(bin_msg) > MAX_PAYLOAD:
     raise ValueError('Message too long')
 
@@ -771,9 +777,15 @@ Y_zz_img = zigZagEncode(Y_img_quant)
 Cb_zz_img = zigZagEncode(Cb_img_quant)
 Cr_zz_img = zigZagEncode(Cr_img_quant)
 print("finished zigzag")
-#print("zz", Y_zz_img)
+
 # generate pseudo-random path for encoding message along
 # and encode message along path
+print("encoding message...")
+encode_path, Y_zz_img, Cb_zz_img, Cr_zz_img = F5(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
+#print(encode_path)
+with open('.msgpath', 'wb') as fp:
+    pickle.dump(encode_path, fp)
+print("encoded and written path to file")
 
 # encode DC coefficients ([0][0]) using DPCM
 # encode AC coefficients using RLE
@@ -782,13 +794,6 @@ Y_dc_arr, Y_ac_arr = RLEandDPCM(Y_zz_img)
 Cb_dc_arr, Cb_ac_arr = RLEandDPCM(Cb_zz_img)
 Cr_dc_arr, Cr_ac_arr = RLEandDPCM(Cr_zz_img)
 print("finished rle")
-#print(Y_ac_arr)
-print("encoding message...")
-encode_path, Y_ac_arr, Cb_ac_arr, Cr_ac_arr = F5(bin_msg, Y_ac_arr, Cb_ac_arr, Cr_ac_arr)
-print(encode_path)
-with open('.msgpath', 'wb') as fp:
-    pickle.dump(encode_path, fp)
-print("encoded and written path to file")
 
 # Huffman coding
 

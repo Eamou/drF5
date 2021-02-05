@@ -470,6 +470,7 @@ def assembleImage(img_tiles):
             row = []
     return np.array(img)
 
+"""
 def extractMessage(msg_path, Y_zz_img, Cb_zz_img, Cr_zz_img):
     cur_img = Y_zz_img
     bit_msg = ''
@@ -496,6 +497,7 @@ def extractMessage(msg_path, Y_zz_img, Cb_zz_img, Cr_zz_img):
             message += letter
             char = ''
     return message
+"""
 
 def removeHPadding(img):
     img_list = list(img)
@@ -513,6 +515,33 @@ def removeVPadding(img):
     while len(img_list) != v_img_height:
         img_list.pop()
     return np.array(img_list)
+
+def lsbF5(x):
+    if x < 0:
+        return int((1 - x) % 2)
+    else:
+        return int(x % 2)
+
+def extractF5(msg_path, img):
+    bit_msg = ""
+    for bit_loc in msg_path:
+        channel = bit_loc[0]
+        row_i = bit_loc[1][0]
+        block_i = bit_loc[1][1]
+        coef_i = bit_loc[1][2]
+        block = (row_i * hor_block_count) + block_i
+        coef = img[channel][block][coef_i]
+        #print(bit_loc, "=", block, coef_i, "coef:", coef)
+        bit_msg += str(int(lsbF5(coef)))
+    #print(bit_msg)
+    char, message = '', ''
+    for bit in bit_msg:
+        char += bit
+        if len(char) == 8:
+            letter = chr(int(char, 2))
+            message += letter
+            char = ''
+    return message
 
 ########################################
 ########PROGRAM BEGINS HERE#############
@@ -550,7 +579,7 @@ Cr_zz_img = unRLE(Cr_decoded_img)
 print("extracted zigzags")
 
 # extract message
-message = extractMessage(msg_path, Y_zz_img, Cb_zz_img, Cr_zz_img)
+message = extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
 print("extracted message:", message)
 
 # zig zags are stored differently - 2d array here, but a 3d array when encoding positions.
