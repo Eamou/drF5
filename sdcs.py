@@ -13,8 +13,8 @@ class SDCS:
     def gen_table(self):
         # for each b in z_M, exists some vector S s.t. a0.s0 + a1.s1 + ... = b with a in A
         sums = {i: list() for i in self.z_M}
-        for i_val in range(-1,2):
-            for j_val in range(-1, 2):
+        for i_val in self.s:
+            for j_val in self.s:
                 for i in self.A:
                     for j in self.A:
                         if j > i:
