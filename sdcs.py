@@ -1,29 +1,35 @@
+# https://stackoverflow.com/questions/7186518/function-with-varying-number-of-for-loops-python
+
 import numpy as np
 
 class SDCS:
-    def __init__(self, n, k, M, A):
-        self.n = n
-        self.k = k
-        self.M = M
+    def __init__(self, params, A):
+        self.n, self.k, self.M = params
         self.A = A
         self.s = [-1, 0, 1]
-        self.z_M = [i for i in range(M)]
-        self.table = self.gen_table()
+        self.z_M = [i for i in range(self.M)]
+        self.table = {i: list() for i in self.z_M}
+        self.gen_table()
     
-    def gen_table(self):
-        # for each b in z_M, exists some vector S s.t. a0.s0 + a1.s1 + ... = b with a in A
-        sums = {i: list() for i in self.z_M}
-        for i_val in self.s:
-            for j_val in self.s:
+    def loop_rec(self, i_val, i, n):
+        if n >= 1:
+            for i_val in self.s:
                 for i in self.A:
-                    for j in self.A:
-                        if j > i:
-                            sum = self.add(self.prod(i_val, i), self.prod(j_val, j))
-                            sums[sum].append([i_val, j_val])
+                    self.loop_rec(i_val, i, n - 1)
+        else:
+            for j_val in self.s:
+                for j in self.A:
+                    if j > i:
+                        sum = self.add(self.prod(i_val, i), self.prod(j_val, j))
+                        self.table[sum].append([i_val, j_val])
+
+    def gen_table(self):
+        # perform n iterations of the nested for loops required to generate the values
+        self.loop_rec(0, 0, self.n-1)
         # having generated all possible combinations, remove invalid ones
         # e.g, k limit for non-zero s values
-        for i in sums:
-            b = np.array(sums[i])
+        for i in self.table:
+            b = np.array(self.table[i])
             remove_list = list()
             for s_pair in b:
                 zero_count = np.count_nonzero(s_pair==0)
@@ -31,8 +37,7 @@ class SDCS:
                     remove_list.append(s_pair)
             b = [list(x) for x in b]
             remove_list = [list(y) for y in remove_list]
-            sums[i] = [x for x in b if x not in remove_list]
-        return sums
+            self.table[i] = [x for x in b if x not in remove_list]
             
     def add(self, num1, num2):
         return (num1 + num2) % self.M
@@ -63,5 +68,5 @@ class SDCS:
                 if -1 not in d:
                     return d
 
-test = SDCS(2, 1, 4, [1,2])
+test = SDCS((2, 1, 4), [1,2])
 print(test.embed([1,1], 0))
