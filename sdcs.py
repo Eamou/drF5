@@ -11,21 +11,29 @@ class SDCS:
         self.table = {i: list() for i in self.z_M}
         self.gen_table()
     
-    def loop_rec(self, i_val, i, n):
+    # what about the VARIABLES - how do we change name/keep them unique between recurses and loops?
+    # dictionary... {i_val:0, i:0, j_val:1, j:1, k_val:-1, k:0, ... , n_val:1, n:4}
+    def loop_rec(self, val_dict, n):
         if n >= 1:
             for i_val in self.s:
                 for i in self.A:
-                    self.loop_rec(i_val, i, n - 1)
+                    val_dict[n] = [i_val, i]
+                    self.loop_rec(val_dict, n - 1)
         else:
             for j_val in self.s:
                 for j in self.A:
-                    if j > i:
-                        sum = self.add(self.prod(i_val, i), self.prod(j_val, j))
-                        self.table[sum].append([i_val, j_val])
+                    val_dict[n] = [j_val, j]
+                    if j > val_dict[n+1][1]:
+                        sum = 0
+                        for _, iter_var in val_dict.items():
+                            sum = self.add(sum, self.prod(iter_var[0], iter_var[1]))
+                        self.table[sum].append([item[1][0] for item in val_dict.items()][::-1])
+                        # need to reverse as the iterables are stored reversed compared to if these were normal nested for loops
 
     def gen_table(self):
         # perform n iterations of the nested for loops required to generate the values
-        self.loop_rec(0, 0, self.n-1)
+        val_dict = {n: [] for n in range(self.n)}
+        self.loop_rec(val_dict, self.n-1)
         # having generated all possible combinations, remove invalid ones
         # e.g, k limit for non-zero s values
         for i in self.table:
@@ -40,9 +48,11 @@ class SDCS:
             self.table[i] = [x for x in b if x not in remove_list]
             
     def add(self, num1, num2):
+        # addition within finite field
         return (num1 + num2) % self.M
     
     def prod(self, num1, num2):
+        # multiplication within finite field
         return (num1 * num2) % self.M
 
     def extract(self, sequence):
@@ -67,6 +77,7 @@ class SDCS:
             for d in delta:
                 if -1 not in d:
                     return d
+            return delta[0]
 
-test = SDCS((2, 1, 4), [1,2])
-print(test.embed([1,1], 0))
+test = SDCS((3, 2, 17), [1,2,6])
+print(test.embed([2,1,0], 3))
