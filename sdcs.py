@@ -11,8 +11,6 @@ class SDCS:
         self.table = {i: list() for i in self.z_M}
         self.gen_table()
     
-    # what about the VARIABLES - how do we change name/keep them unique between recurses and loops?
-    # dictionary... {i_val:0, i:0, j_val:1, j:1, k_val:-1, k:0, ... , n_val:1, n:4}
     def loop_rec(self, val_dict, n):
         if n >= 1:
             for i_val in self.s:
@@ -27,7 +25,10 @@ class SDCS:
                         sum = 0
                         for _, iter_var in val_dict.items():
                             sum = self.add(sum, self.prod(iter_var[0], iter_var[1]))
-                        self.table[sum].append([item[1][0] for item in val_dict.items()][::-1])
+                        new_entry = [item[1][0] for item in val_dict.items()][::-1]
+                        if new_entry not in self.table[sum]:
+                            # we do this to avoid duplicates
+                            self.table[sum].append(new_entry)
                         # need to reverse as the iterables are stored reversed compared to if these were normal nested for loops
 
     def gen_table(self):
@@ -74,10 +75,15 @@ class SDCS:
             return delta[0]
         else:
             # try to return without -1 as it requires less bit changes
+            solns = []
             for d in delta:
-                if -1 not in d:
-                    return d
-            return delta[0]
+                xd_sum = [self.add(d[i], x[i]) for i in range(len(x))]
+                if self.extract(xd_sum) == b:
+                    solns.append(d)
+            solns = np.array(solns)
+            # now try to find the one with the least changes - sort by zero entries and reverse
+            return solns[(solns == 0).sum(axis=1).argsort()][::-1][0]
+                
 
 test = SDCS((3, 2, 17), [1,2,6])
-print(test.embed([2,1,0], 3))
+print(test.embed([2,1,0], 5))
