@@ -33,20 +33,15 @@ class SDCS:
 
     def gen_table(self):
         # perform n iterations of the nested for loops required to generate the values
-        val_dict = {n: [] for n in range(self.n)}
+        val_dict = {n: list() for n in range(self.n)}
         self.loop_rec(val_dict, self.n-1)
         # having generated all possible combinations, remove invalid ones
         # e.g, k limit for non-zero s values
         for i in self.table:
-            b = np.array(self.table[i])
-            remove_list = list()
-            for s_pair in b:
+            for s_pair in self.table[i].copy():
                 zero_count = np.count_nonzero(s_pair==0)
                 if len(s_pair) - zero_count > self.k:
-                    remove_list.append(s_pair)
-            b = [list(x) for x in b]
-            remove_list = [list(y) for y in remove_list]
-            self.table[i] = [x for x in b if x not in remove_list]
+                    self.table[i] = np.delete(self.table[i], np.argwhere(self.table), axis=0)
             
     def add(self, num1, num2):
         # addition within finite field
@@ -75,14 +70,14 @@ class SDCS:
             return delta[0]
         else:
             # try to return without -1 as it requires less bit changes
-            solns = []
+            solns = list()
             for d in delta:
                 xd_sum = [self.add(d[i], x[i]) for i in range(len(x))]
                 if self.extract(xd_sum) == b:
                     solns.append(d)
             solns = np.array(solns)
-            # now try to find the one with the least changes - sort by zero entries and reverse
-            return solns[(solns == 0).sum(axis=1).argsort()][::-1][0]
+            # now try to find the one with the least changes - sort by zero entries and return last
+            return solns[(solns == 0).sum(axis=1).argsort()][-1]
                 
 
 test = SDCS((3, 2, 17), [1,2,6])
