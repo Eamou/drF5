@@ -678,7 +678,8 @@ def meF5(msg, c1, c2, c3):
     for row_i in range(ver_block_count):
         for block_i in range(hor_block_count):
             # how to stop embedding in dc?
-            suitable_coefs_boolmask = np.array([1<coef<m-1 for coef in channel[row_i][block_i][1:]]) # true or false based on value
+            suitable_coefs_boolmask = np.array([0<coef<(m-1) for coef in channel[row_i][block_i]]) # true or false based on value
+            suitable_coefs_boolmask[0] = False # avoid DC values
             suitable_coefs = np.extract(suitable_coefs_boolmask, channel[row_i][block_i]) # filter array by value
             suitable_coefs_index = np.where(suitable_coefs_boolmask==True)[0] # get indexes of those filtered
             if len(suitable_coefs) < n: # if there arent enough suitable coefficients
