@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import math
 import pickle
+from sdcs import sdcs
 
 Y_quant_table = np.array([[
     16, 11, 10, 16, 24, 40, 51, 61],
@@ -522,6 +523,34 @@ def lsbF5(x):
     else:
         return int(x % 2)
 
+def extractmeF5(msg_path, img):
+    n,k,m,a = 3,2,17,[1,2,6]
+    f5_sdcs = sdcs((n,k,m), a)
+    channel = img[0] #2500 blocks in a single row, no actual rows
+    bit_msg = ''
+    for bloc in msg_path:
+        # row, block, coef
+        sdcs_block = list()
+        for location in bloc:
+            row_i, block_i, coef_i = location
+            block = (row_i * hor_block_count) + block_i
+            sdcs_block.append(img[0][block][coef_i])
+        b = int(f5_sdcs.extract(sdcs_block))
+        b_bit = bin(b)[2:]
+        while len(b_bit) < math.floor(math.log(m, 2)):
+            b_bit = '0' + b_bit
+        bit_msg += b_bit
+    char, message = '', ''
+    for bit in bit_msg:
+        char += bit
+        if len(char) == 8:
+            letter = chr(int(char, 2))
+            message += letter
+            char = ''
+    return message
+        
+
+
 def extractF5(msg_path, img):
     bit_msg = ""
     for bit_loc in msg_path:
@@ -578,10 +607,6 @@ Cb_zz_img = unRLE(Cb_decoded_img)
 Cr_zz_img = unRLE(Cr_decoded_img)
 print("extracted zigzags")
 
-# extract message
-message = extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
-print("extracted message:", message)
-
 # zig zags are stored differently - 2d array here, but a 3d array when encoding positions.
 # e.g, rather than {[[],[],[],[]],[[],[],[],[]]}, it is {[],[],[],[],...,[],[],[],[]}
 
@@ -590,6 +615,10 @@ Y_zz_img = unDPCM(Y_zz_img)
 Cb_zz_img = unDPCM(Cb_zz_img)
 Cr_zz_img = unDPCM(Cr_zz_img)
 print("extracted DC values from DPCM")
+
+# extract message
+message = extractmeF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
+print("extracted message:", message)
 
 # transform 64-len zigzag array to 8x8 tile
 Y_img_tiles = unZigZag(Y_zz_img)

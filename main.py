@@ -3,6 +3,7 @@ import cv2
 import math
 import random
 import pickle
+from sdcs import sdcs
 
 # to-do:
 # 1. enable program to work with any image dimension //done?
@@ -659,6 +660,49 @@ def lsbF5(x):
     else:
         return int(x % 2)
 
+def meF5(msg, c1, c2, c3):
+    # set up sdcs
+    n, k, m, a = 3, 2, 17, [1,2,6]
+    f5_sdcs = sdcs((n,k,m), a)
+    # convert message to correct format for sdcs - blocks of n z_m integers
+    num_bits_per_int = math.floor(math.log(m, 2))
+    b_arr = list()
+    for i in range(0, len(msg), num_bits_per_int):
+        bits = msg[i:i+num_bits_per_int]
+        b_arr.append(int(bits,2))
+    # what to do with left-over vals if it doesnt divide equally into n coefs?
+    # begin embedding
+    path = list()
+    test = list()
+    test2 = list()
+    channel = c1 #replace with random in future but who cares rn
+    row_i, block_i, b_i = 0, 0, 0
+    for row_i in range(ver_block_count):
+        for block_i in range(hor_block_count):
+            # how to stop embedding in dc?
+            suitable_coefs_boolmask = np.array([1<coef<m-1 for coef in channel[row_i][block_i][1:]]) # true or false based on value
+            suitable_coefs = np.extract(suitable_coefs_boolmask, channel[row_i][block_i]) # filter array by value
+            suitable_coefs_index = np.where(suitable_coefs_boolmask==True)[0] # get indexes of those filtered
+            if len(suitable_coefs) < n: # if there arent enough suitable coefficients
+                continue
+            for j in range(0, len(suitable_coefs), n):
+                coefs_i = suitable_coefs_index[j:j+n]
+                coefs = suitable_coefs[j:j+n] # what we have,
+                if len(coefs) < n:
+                    continue
+                b = b_arr[b_i] # what we want,
+                delta = f5_sdcs.embed(coefs, b) # how we change what we have to get what we want
+                block_path = list()
+                for i, coef_index in enumerate(coefs_i): # make the changes:
+                    c1[row_i][block_i][coef_index] += delta[i]
+                    block_path.append([row_i, block_i, coef_index])
+                if len(block_path) != 0:
+                    path.append(block_path)
+                    b_i += 1
+                    if b_i >= len(b_arr):
+                        return path, c1, c2, c3
+
+
 def F5(msg, c1, c2, c3):
     # c1, c2, c3 = y,cb,cr
     path = []
@@ -703,6 +747,7 @@ def F5(msg, c1, c2, c3):
 # get image dimensions
 image_name = 'fagen.png'
 img = readImage(image_name)
+#print(img)
 img_height, img_width = getImageDimensions(img)
 img_height_copy, img_width_copy = img_height, img_width
 MAX_PAYLOAD = findMaxPayload(img_height, img_width)
@@ -781,7 +826,7 @@ print("finished zigzag")
 # generate pseudo-random path for encoding message along
 # and encode message along path
 print("encoding message...")
-encode_path, Y_zz_img, Cb_zz_img, Cr_zz_img = F5(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
+encode_path, Y_zz_img, Cb_zz_img, Cr_zz_img = meF5(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
 #print(encode_path)
 with open('.msgpath', 'wb') as fp:
     pickle.dump(encode_path, fp)
