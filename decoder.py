@@ -607,6 +607,10 @@ Cb_zz_img = unRLE(Cb_decoded_img)
 Cr_zz_img = unRLE(Cr_decoded_img)
 print("extracted zigzags")
 
+# extract message
+message = extractmeF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
+print("extracted message:", message)
+
 # zig zags are stored differently - 2d array here, but a 3d array when encoding positions.
 # e.g, rather than {[[],[],[],[]],[[],[],[],[]]}, it is {[],[],[],[],...,[],[],[],[]}
 
@@ -615,10 +619,6 @@ Y_zz_img = unDPCM(Y_zz_img)
 Cb_zz_img = unDPCM(Cb_zz_img)
 Cr_zz_img = unDPCM(Cr_zz_img)
 print("extracted DC values from DPCM")
-
-# extract message
-message = extractmeF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
-print("extracted message:", message)
 
 # transform 64-len zigzag array to 8x8 tile
 Y_img_tiles = unZigZag(Y_zz_img)
