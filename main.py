@@ -673,8 +673,6 @@ def meF5(msg, c1, c2, c3):
     # what to do with left-over vals if it doesnt divide equally into n coefs?
     # begin embedding
     path = list()
-    test = list()
-    test2 = list()
     channel = c1 #replace with random in future but who cares rn
     row_i, block_i, b_i = 0, 0, 0
     for row_i in range(ver_block_count):
@@ -745,7 +743,7 @@ def F5(msg, c1, c2, c3):
 
 # read image (ability to input image name to be added later)
 # get image dimensions
-image_name = 'fagen.png'
+image_name = 'cbat.png'
 img = readImage(image_name)
 #print(img)
 img_height, img_width = getImageDimensions(img)
@@ -759,7 +757,7 @@ with open('.v_imgdim', 'wb') as fp:
 # adjust image with padding to enable 8x8 blocks
 if img_width % BLOCK_SIZE != 0:
     img = padImageWidth(img)
-elif img_height % BLOCK_SIZE != 0:
+if img_height % BLOCK_SIZE != 0:
     img = padImageHeight(img)
 
 # new dimensions
