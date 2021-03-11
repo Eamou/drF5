@@ -21,39 +21,20 @@ With this information we are ready to perform the calculative functions required
 # Provide lookup data for polynomial/binary form alongside index and decimal, as this will
 # enable easier calculations in long devision
 
-# Table 2: 0x11D
-
-if os.path.isfile('.GF16_ANTILOG'):
-    with open('.GF16_ANTILOG', 'rb') as fp:
-        ANTILOG_TABLE = pickle.load(fp)
-else:
-    raise FileNotFoundError('Could not load GF256 AntiLog table file')
-
-LOG_TABLE = {a_j: j for j, a_j in ANTILOG_TABLE.items()}
-
 # Code-defining constants
 # As they are now, 4 errors can be corrected. This can be adjusted by changing these values.
-M = 8
-ALPHA = 2
-#N = 255
-#K = 239
-N = 15
-K = 11
-T = (N - K) // 2
-B = 0
+# M = 8
+# ALPHA = 2
 
 # Set the Generator Polynomial and Minimum Primitive Element
 # Changing these will mean the rest of the code will function incorrectly, if at all.
 # They are the 'unique key' of this particular implementation of Reed-Solomon
 
-#GEN_POLY = [1,0,0,0,1,1,1,0,1]      # polynomial: x^8 + x^4 + x^3 + x^2 + 1 :: 285 :: 0x11D
-#CODE_GEN_POLY = [1, 59, 13, 104, 189, 68, 209, 30, 8, 163, 65, 41, 229, 98, 50, 36, 59]
                                     # polynomial: x^16 + 59x^15 + 13x^14 + 104x^13 + 189x^12
                                     #             68x^11 + 209x^10 + 30x^9 + 8x^8 + 163x^7
                                     #             65x^6 + 41x^5 + 229x^4 + 98x^3 + 50x^2 + 36x + 59
 #MIN_PRIM_ELEM = [1, 0]              # primitive element (alpha): x :: 1 :: '000000010'
-GEN_POLY = [1,0,0,1,1]             # x^4 + x + 1 :: [1,0,0,1,1] :: field gen poly
-CODE_GEN_POLY = [1,15,3,1,12]
+
 
 # Perform addition in the Galois field through bitwise XOR
 # num1, num2 must be in decimal form.
@@ -161,13 +142,18 @@ def exponent(val, exp):
     result = val
     if exp == 0:
         return 1
-    for i in range(exp-1):
-        result = multiply(result, val)
-    return result
+    elif exp == 1:
+        return val
+    else:
+        for _ in range(exp-1):
+            result = multiply(result, val)
+        return result
 
 # Evaluates the polynomial at value 'val' within the finite field.
 # Receives an array and an integer, returns an integer.
 def polyVal(poly, val):
+    # strip leading 0s
+    poly = np.trim_zeros(poly, trim='f')
     result = 0
     deg = len(poly)-1
     for i, coef in enumerate(poly):
@@ -272,13 +258,12 @@ def detectErrors(R_x):
         S_i = polyVal(R_x, alpha_i)
         syndromes.insert(0, S_i)
     syndromes = np.trim_zeros(syndromes, 'f')
-    #print(f'syndrome: {syndromes}')
     # ensure syndrome equation is written in the correct direction
     # syndromes = np.flip(syndromes)
     if np.count_nonzero(syndromes) != 0:
         loc_poly, mag_poly = solveSyndromes(syndromes)
         loc_roots = []
-        for j in range(0,N):
+        for j in range(N):
             alpha_j = ANTILOG_TABLE[j]
             val = polyVal(loc_poly, alpha_j)
             if val == 0:
@@ -286,21 +271,19 @@ def detectErrors(R_x):
         if len(loc_roots) != len(loc_poly)-1:
             # if the locaction polynomial has num of roots unequal to its degree, too many errors.
             raise Exception('Codeword contains too many errors')
-        #print(f'loc: {loc_poly}\nmag: {mag_poly}')
-        #print('roots of loc:', loc_roots)
         errors = findErrors(loc_poly, mag_poly)
-        if len(errors) > T:
-            raise KnownFailureException(f'Errors in message exceed correction capacity. Errors: {len(errors)}, Capacity: {T}')
         R_x = fixErrors(R_x, errors)
     return R_x
 
 # Message will be a two-dimensional array containing k-1 decimal (from 8-bit) symbols.
 # returns message*n^(N-K)+remainder=T(x)
 def encode(message):
+    if len(message) == 0:
+        raise Exception('Message length zero')
     if len(message) > K:
         raise ValueError('Message too long, length:', len(message))
     # multiply by x^(2t) same as appending 2t 0s
-    for i in range(N-K):
+    for _ in range(N-K):
         message.append(0)
     # now need to divide by code generator polynomial
     _, remainder = polyDiv(message, CODE_GEN_POLY)
@@ -316,25 +299,60 @@ def prepareBitString(bitstring):
     message = [int(i, 2) for i in message]
     return message
 
+###############################################################################################################
+
+GF_PARAM = 256
+
+# Table 2: 0x11D
+
+if GF_PARAM == 16:
+    table_name = '.GF16_ANTILOG'
+    GEN_POLY = [1,0,0,1,1]             # x^4 + x + 1 :: [1,0,0,1,1] :: field gen poly
+    CODE_GEN_POLY = [1,15,3,1,12]
+    N = 15
+    K = 11
+
+elif GF_PARAM == 256:
+    table_name = '.GF256_ANTILOG'
+    GEN_POLY = [1,0,0,0,1,1,1,0,1]      # polynomial: x^8 + x^4 + x^3 + x^2 + 1 :: 285 :: 0x11D
+    CODE_GEN_POLY = [1, 59, 13, 104, 189, 68, 209, 30, 8, 163, 65, 41, 229, 98, 50, 36, 59]
+    N = 255
+    K = 239
+
+T = (N - K) // 2
+B = 0
+
+if os.path.isfile(table_name):
+    with open(table_name, 'rb') as fp:
+        ANTILOG_TABLE = pickle.load(fp)
+else:
+    raise FileNotFoundError(f'Could not load {table_name} table file')
+
+LOG_TABLE = {a_j: j for j, a_j in ANTILOG_TABLE.items()}
+
+
 #bitstring = '011100100110010101100101011001000010000001110011011011110110110001101111011011010110111101101110'
 #message_poly = prepareBitString(bitstring)
 encoded_poly = encode([1,2,3,4,5,6,7,8,9,10,11])
-#encoded_poly[13] = add(encoded_poly[13], 1)
-#encoded_poly[3] = add(encoded_poly[3], 3)
-#encoded_poly[2] = add(encoded_poly[2], 1)
-#encoded_poly[1] = add(encoded_poly[1], 1)
-encoded_poly[14] = 3.
-encoded_poly[13] = 3.
-encoded_poly[0] = 4.
-print("encoded+error:", encoded_poly)
-#error_poly[0] = error_poly[0]+1
-corrected_poly = detectErrors(encoded_poly)
+print("encoded:", encoded_poly)
+error_poly = encoded_poly.copy()
+# two consecutive same numbers [115, 115, 110, 120...] breaks it for some reason?
+# doesnt break in gf(16)...
+error_poly[0] = 2.
+error_poly[2] = 2.
+#error_poly[3] = 2.
+#error_poly[1] = error_poly[1]+1.
+print("encoded+error:", error_poly)
+corrected_poly = detectErrors(error_poly)
 print("corrected:",corrected_poly)
+assert np.array_equal(encoded_poly, corrected_poly)
+print("***pass***")
 
 """
 to do:
 when we know the locations of the errors, the error correction capacity is doubled.
 with jpeg cropping we will always know where the errors are as they will be unable to be read
-when attempting to read the message embedding path
-so add the functionality to action on this!
+when attempting to read the message embedding path so add the functionality to action on this!
+
+bugfix 256 //done???
 """
