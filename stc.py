@@ -1,4 +1,3 @@
-from functools import partial
 import numpy as np
 
 class stc:
@@ -8,62 +7,60 @@ class stc:
         self.msg = msg
         self.H_hat = H_hat
 
-        self.h, self.w = np.shape(self.H_hat)
+        self.h = len(bin(max(self.H_hat))[2:])
+        self.w = np.shape(self.H_hat)[0]
         self.m = 2**(self.h)
         self.n = len(self.x)
+        self.bin_length = '0' + str(self.h) + 'b'
 
-        self.H = self.__gen_H()
-        self.rho = lambda a: 1 # this is the embedding cost for F5
-        self.num_blocks = np.shape(self.H)[1] // 2
+        self.rho = lambda x: 1 # this is the embedding cost for F5
+        self.num_blocks = len(self.msg)
 
-    def __conc_lst(self, arr):
-        return ''.join([str(x) for x in arr])
-
-    def __gen_H(self):
+    def gen_H(self):
+        H_hat_bin = np.array([list(format(x, self.bin_length))[::-1] for x in self.H_hat], dtype=np.uint8).T
         H = np.zeros((self.m,self.n))
         i, j = 0, 0
         i_step, j_step = 1, self.w
         while j < self.n:
-            H[i][j:j+j_step], H[i+i_step][j:j+j_step] = H_hat
+            H[i][j:j+j_step], H[i+i_step][j:j+j_step] = H_hat_bin
             i += i_step
             j += j_step
             if i == self.m-1:
-                H[i][j:j+j_step] = H_hat[0]
+                H[i][j:j+j_step] = H_hat_bin[0]
                 return H
 
     def backward_viterbi(self, weights, path, x_index, m_index):
+        # http://dde.binghamton.edu/filler/pdf/Fill10spie-syndrome-trellis-codes.pdf
         y = np.zeros(len(path))
-        print(weights)
         embedding_cost = int(min(weights))
         state = list(weights).index(embedding_cost) # 1
         x_index-=1
         m_index-=1 #code.n = num columns
         for _ in range(self.num_blocks, 0, -1):
-            state = 2*state + self.msg[m_index]
+            state = 2*state + self.msg[m_index] # this is the fix from the pseudocode
             m_index -= 1
             for j in range(self.w-1, -1, -1):
-                print("pre y: ", state)
                 y[x_index] = path[x_index][state]
-                state = state ^ (int(y[x_index]*int(self.__conc_lst(list(self.H_hat.T[j][::-1])),2)))
+                state = state ^ (int(y[x_index]*H_hat[j]))
                 x_index -= 1
         return y, embedding_cost
 
-    def forward_viterbi(self):
+    def generate(self):
+        # forward viterbi
+        # http://dde.binghamton.edu/filler/pdf/Fill10spie-syndrome-trellis-codes.pdf
         weights = np.array(np.ones(2**(self.h)) * np.inf)
         weights[0] = 0
         path = np.zeros((len(self.x), 2**(self.h)))
         x_index, m_index = 0, 0
-        bin_length = '0' + str(self.h) + 'b'
         partial_syndromes = list()
         for s in range(2**self.h):
-            partial_syndromes.append(int(format(s, bin_length)[::-1],2))
+            partial_syndromes.append(int(format(s, self.bin_length)[::-1],2))
         for _ in range(self.num_blocks):
             for j in range(self.w):
-                #print("col:", weights, path)
                 new_weights = np.array(np.zeros(2**(self.h)))
                 for k in partial_syndromes:
                     w0 = weights[k] + (self.x[x_index] * self.rho(self.x[x_index]))
-                    w1 = weights[k ^ int(self.__conc_lst(list(self.H_hat.T[j][::-1])),2)] + (1-self.x[x_index])*self.rho(self.x[x_index])
+                    w1 = weights[k ^ H_hat[j]] + (1-self.x[x_index])*self.rho(self.x[x_index])
                     if w1 < w0:
                         new_weights[k] = w1
                         path[x_index][k] = 1
@@ -72,21 +69,26 @@ class stc:
                         path[x_index][k] = 0
                 x_index += 1
                 weights = new_weights.copy()
-            #print("prune:", weights, path)
             for j in range(2**(self.h-1)):
                 weights[j] = weights[2*j + self.msg[m_index]]
             weights[2**(self.h-1):(2**self.h)] = np.inf
             m_index += 1
-        print(path)
         return self.backward_viterbi(weights, path, x_index, m_index)
 
-H_hat = np.array([[1,0],[1,1]])
+H_hat = np.array([3,2], dtype=np.uint8)
 m = np.array([0,1,1,1])
 x = np.array([1,0,1,1,0,0,0,1])
 
 stc_test = stc(x, m, H_hat)
-y, cost = stc_test.forward_viterbi()
-print("y: ", y)
-print("message: ", (stc_test.H @ y)%2)
+y, cost = stc_test.generate()
+H = stc_test.gen_H()
+print(f"y: {y}")
+assert np.array_equal((H @ y) % 2, m)
+print("***pass***")
 #H = gen_H(H_hat, m, n)
 #print(H)
+#int(self.__conc_lst(list(self.H_hat.T[j][::-1])),2)
+"""
+def __conc_lst(self, arr):
+        return ''.join([str(x) for x in arr])
+"""
