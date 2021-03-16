@@ -9,7 +9,7 @@ class stc:
 
         self.h = len(bin(max(self.H_hat))[2:])
         self.w = np.shape(self.H_hat)[0]
-        self.m = 2**(self.h)
+        self.m = len(self.msg)
         self.n = len(self.x)
         self.bin_length = '0' + str(self.h) + 'b'
 
@@ -22,7 +22,12 @@ class stc:
         i, j = 0, 0
         i_step, j_step = 1, self.w
         while j < self.n:
-            H[i][j:j+j_step], H[i+i_step][j:j+j_step] = H_hat_bin
+            for mini_row in range(self.h):
+                try:
+                    H[i+mini_row][j:j+j_step] = H_hat_bin[mini_row]
+                except:
+                    break
+            #H[i][j:j+j_step], H[i+i_step][j:j+j_step] = H_hat_bin
             i += i_step
             j += j_step
             if i == self.m-1:
@@ -41,7 +46,7 @@ class stc:
             m_index -= 1
             for j in range(self.w-1, -1, -1):
                 y[x_index] = path[x_index][state]
-                state = state ^ (int(y[x_index]*H_hat[j]))
+                state = state ^ (int(y[x_index]*self.H_hat[j]))
                 x_index -= 1
         return y, embedding_cost
 
@@ -60,7 +65,7 @@ class stc:
                 new_weights = np.array(np.zeros(2**(self.h)))
                 for k in partial_syndromes:
                     w0 = weights[k] + (self.x[x_index] * self.rho(self.x[x_index]))
-                    w1 = weights[k ^ H_hat[j]] + (1-self.x[x_index])*self.rho(self.x[x_index])
+                    w1 = weights[k ^ self.H_hat[j]] + (1-self.x[x_index])*self.rho(self.x[x_index])
                     if w1 < w0:
                         new_weights[k] = w1
                         path[x_index][k] = 1
@@ -75,16 +80,19 @@ class stc:
             m_index += 1
         return self.backward_viterbi(weights, path, x_index, m_index)
 
-H_hat = np.array([3,2], dtype=np.uint8)
+"""
+H_hat = np.array([71,109], dtype=np.uint8)
 m = np.array([0,1,1,1])
 x = np.array([1,0,1,1,0,0,0,1])
 
 stc_test = stc(x, m, H_hat)
-y, cost = stc_test.generate()
 H = stc_test.gen_H()
+y, cost = stc_test.generate()
 print(f"y: {y}")
 assert np.array_equal((H @ y) % 2, m)
 print("***pass***")
+"""
+
 #H = gen_H(H_hat, m, n)
 #print(H)
 #int(self.__conc_lst(list(self.H_hat.T[j][::-1])),2)
