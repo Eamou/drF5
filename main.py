@@ -3,7 +3,10 @@ import cv2
 import math
 import random
 import pickle
+
+from numpy.core.shape_base import block
 from sdcs import sdcs
+from stc import stc
 
 # to-do:
 # 1. enable program to work with any image dimension //done?
@@ -252,9 +255,9 @@ def displayImage(img):
     cv2.destroyAllWindows()
 
 def blockify(img):
-    img_tiles = [] # transform image into series of 8x8 blocks
+    img_tiles = list() # transform image into series of 8x8 blocks
     for row in range(0, img_height, BLOCK_SIZE):
-        img_tiles_row = [] # fill in row by row
+        img_tiles_row = list() # fill in row by row
         for column in range(0, img_width, BLOCK_SIZE):
             column_end = column + BLOCK_SIZE
             row_end = row + BLOCK_SIZE
@@ -332,7 +335,6 @@ def quantizeAndRound(Y_img, Y_flag):
             # round to nearest int
             np.rint(Y_img[row_block_i][block_i], Y_img[row_block_i][block_i])
     return Y_img
-
 
 def zigZagEncode(Y_img):
     # i know this looks horrible but it is honestly the fastest way to do it!
@@ -452,7 +454,7 @@ def RLEandDPCM(zz_img):
                     continue
                 else:
                     if max_zero_count > 0:
-                        for i in range(max_zero_count):
+                        for _ in range(max_zero_count):
                             ac_rle.append([15,0])
                     ac_rle.append([zero_count, cur_num])
                     zero_count = 0
@@ -511,7 +513,6 @@ def onesComp(bitstring):
         elif char == '0':
             oc_bitstring += '1'
     return oc_bitstring
-
 
 def huffman(Y_dc_arr, Y_ac_arr, Cb_dc_arr, Cb_ac_arr, Cr_dc_arr, Cr_ac_arr):
     # compute and create final bitstring of data
@@ -660,7 +661,7 @@ def lsbF5(x):
     else:
         return int(x % 2)
 
-def meF5(msg, c1, c2, c3):
+def sdcsF5(msg, c1, c2, c3):
     # set up sdcs
     n, k, m, a = 3, 2, 17, [1,2,6]
     f5_sdcs = sdcs((n,k,m), a)
@@ -701,10 +702,138 @@ def meF5(msg, c1, c2, c3):
                     if b_i >= len(b_arr):
                         return path, c1, c2, c3
 
+def sigma_ki(d_max, d_min, t1=15, t2=30):
+    if d_max - d_min <= t1:
+        return 1
+    elif t1 <= d_max - d_min <= t2:
+        return 2
+    elif d_max - d_min < t2:
+        return 3
+
+def robustF5(msg, c1, c2, c3):
+    c1 = np.concatenate(c1, axis=0) # concantenate for now and reformat at end...
+    c2 = np.concatenate(c2, axis=0)
+    c3 = np.concatenate(c3, axis=0)
+    x_img, cover_y = list(), list()
+    for channel in range([c1, c2, c3]):
+        cover_x = np.zeros((hor_block_count * ver_block_count,64))
+        cover_y = np.zeros((hor_block_count * ver_block_count,64))
+        for block_i in len(hor_block_count * ver_block_count):
+            for coef_i in range(64):
+                d_i = channel[block_i][coef_i]
+                d1_i = channel[(block_i-1)%64][coef_i]
+                d2_i = channel[(block_i+1)%64][coef_i]
+                if block_i + hor_block_count >= hor_block_count * ver_block_count:
+                    d3_i = channel[(block_i-hor_block_count)%64][coef_i]
+                else:
+                    d3_i = channel[(block_i+hor_block_count)%64][coef_i]
+                
+                m_i = (d1_i + d2_i + d3_i) // 3
+                d_max, d_min = max(d_i, d1_i, d2_i, d3_i), min(d_i, d1_i, d2_i, d3_i)
+                sigma = sigma_ki(d_max, d_min)
+                
+                if 1 & d_i < m_i + sigma:
+                    cover_y[block_i][coef_i] = m_i + sigma
+                elif 0 & d_i > m_i - sigma:
+                    cover_y[block_i][coef_i] = m_i - sigma
+                else:
+                    cover_y[block_i][coef_i] = d_i
+                
+                cover_x[block_i][coef_i] = 0 if d_i <= m_i else 1
+
+        x_img.append(cover_x)
+    # we now have our virtual cover image, so now embed
+    # for now we only embed into one channel
+    stc_obj = stc(cover_x[0], msg, np.array([3,2]))
+    y, _ = stc_obj.generate()
+
+def compress(block, qm, t):
+    return np.around(np.divide(cv2.dct(np.around(cv2.dct(block), decimals=0)), qm[t]), decimals=0)
+
+def ditherAdjust(block, Y_flag, k=1, T=1):
+    # https://www.sciencedirect.com/science/article/pii/S0165168420300013
+    block_original = block.copy()
+    qm_y = [Y_quant_table, Y_quant_table]
+    qm_c = [C_quant_table, C_quant_table]
+    if Y_flag:
+        qm = qm_y
+    else:
+        qm = qm_c
+    block_zero = np.multiply(qm[0], block)
+    n = 2
+    for t in range(1, n):
+        block = np.divide(block_zero, qm[t-1])
+        while True:
+            if k > T:
+                break
+            block = compress(block, qm, t)
+            mod_ind = np.where(block % 2 != block_original % 2)
+            if len(mod_ind[0]) and len(mod_ind[1]) == 0:
+                break
+            for row_ind, col_ind in np.dstack(mod_ind)[0]:
+                if block_zero[row_ind][col_ind] == block_original[row_ind][col_ind] + 1:
+                    block[row_ind][col_ind] -= 2*k
+                elif block_zero[row_ind][col_ind] == block_original[row_ind][col_ind] - 1:
+                    block[row_ind][col_ind] += 2*k
+            k += 1
+        block = np.multiply(qm[t], block)
+    return block
+
+test_block = np.array([[96., -1.,  2.,  1., -0., -0., -0., 0.],
+ [-2., -1.,  2.,  0., -0.,  0., -0., -0.],
+ [ 1., -0., -1., -0., -0.,  0.,  0., -0.],
+ [ 0., -0., -0., -0., -0.,  0.,  0., -0.],
+ [ 0., -0., -0.,  0.,  0.,  0., -0.,  0.],
+ [ 0.,  0., -0.,  0.,  0., -0.,  0., 0.],
+ [ 0.,  0.,  0., -0., -0.,  0., -0., 0.],
+ [ 0.,  0., -0., -0.,  0., -0.,  0., -0.]])
+coef_mask = np.array([abs(coef) > 0 for coef in test_block])
+coef_mask[0][0] = False # ignore dc coef
+coefs = np.extract(coef_mask, test_block)
+coefs_ind = np.dstack(np.where(coef_mask == True))[0]
+x = np.array([int(x%2) for x in coefs])
+m = np.array([0,1,1,1])
+stc_obj = stc(np.array([71,109], dtype=np.uint8))
+y, _ = stc_obj.generate(x,m)
+H = stc_obj.gen_H(x,m)
+assert np.array_equal((H @ y) % 2, m)
+for y_i, index in enumerate(coefs_ind):
+    test_block[index[0]][index[1]] += y[y_i] - test_block[index[0]][index[1]]%2
+test_block = ditherAdjust(test_block, True)
+print(test_block, coefs_ind)
+ext_y = [int(test_block[x[0]][x[1]]%2) for x in coefs_ind]
+print(ext_y)
+print((H @ ext_y) % 2, m)
+exit(0)
+
+def acF5(msg, c1 , c2 ,c3):
+    block_i = 0
+    msg_i = 0
+    channel, channel_i = c1, 0
+    H_hat = np.array([71,109], dtype=np.uint8)
+    stc_obj = stc(H_hat)
+    while msg_i < len(msg):
+        block = channel[block_i]
+        coef_mask = np.array([abs(coef) > 0 for coef in block])
+        coef_mask[0][0] = False # ignore dc coef
+        coefs = np.extract(coef_mask, block)
+        coefs_ind = np.dstack(np.where(coef_mask == True))[0]
+        x = [int(x%2) for x in coefs]
+        if msg_i + len(x) // 2 < len(msg):
+            m = m[msg_i:msg_i + len(x)//2]
+        else:
+            m = m[msg_i:]
+        msg_i += len(x) // 2
+        y = stc_obj.generate(x,m)
+        for y_i, index in enumerate(coefs_ind):
+            block[index[0]][index[1]] += y[y_i] - block[index[0]][index[1]]%2
+        # we now have an stc encoded block, so we must now perform the dither adjustment
+        block = ditherAdjust(block, True if channel_i == 0 else False)
+        block_i += 1
 
 def F5(msg, c1, c2, c3):
     # c1, c2, c3 = y,cb,cr
-    path = []
+    path = list()
     i, j, row_i, block_i = 0, 1, 0, 0
     rand_channel = 0
     num_coefs = (BLOCK_SIZE*BLOCK_SIZE)*hor_block_count*ver_block_count
@@ -748,7 +877,7 @@ image_name = 'cbat.png'
 img = readImage(image_name)
 #print(img)
 img_height, img_width = getImageDimensions(img)
-img_height_copy, img_width_copy = img_height, img_width
+#img_height_copy, img_width_copy = img_height, img_width
 MAX_PAYLOAD = findMaxPayload(img_height, img_width)
 
 # store original image dimensions
@@ -814,7 +943,6 @@ Y_img_quant = quantizeAndRound(Y_img_dct, True)
 Cb_img_quant = quantizeAndRound(Cb_img_dct, False)
 Cr_img_quant = quantizeAndRound(Cr_img_dct, False)
 print("finished quantization and round")
-
 # zig zag encoding
 
 Y_zz_img = zigZagEncode(Y_img_quant)
@@ -825,7 +953,7 @@ print("finished zigzag")
 # generate pseudo-random path for encoding message along
 # and encode message along path
 print("encoding message...")
-encode_path, Y_zz_img, Cb_zz_img, Cr_zz_img = meF5(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
+encode_path, Y_zz_img, Cb_zz_img, Cr_zz_img = sdcsF5(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
 #print(encode_path)
 with open('.msgpath', 'wb') as fp:
     pickle.dump(encode_path, fp)
