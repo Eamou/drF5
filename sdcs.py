@@ -2,7 +2,7 @@
 
 import numpy as np
 
-class SDCS:
+class sdcs:
     def __init__(self, params, A):
         self.n, self.k, self.M = params
         self.A = A
@@ -79,6 +79,19 @@ class SDCS:
             # now try to find the one with the least changes - sort by zero entries and return last
             return solns[(solns == 0).sum(axis=1).argsort()][-1]
                 
+def embedMsg(host, msg, sdcs):
+    if len(host) != sdcs.n:
+        raise Exception(f'Host array should be length n, where n specified by SDCS params: {sdcs.n}')
+    else:
+        if not all(x < sdcs.M for x in host):
+            raise ValueError(f'All numbers in host array should be within the finite field specified by SDCS params: {sdcs.M}')
+        else:
+            int_msg = int(msg, 2)
+            if int_msg > sdcs.M-1:
+                raise ValueError(f'Message should be a number in the finite field Z_{sdcs.M}')
+            else:
+                delta = sdcs.embed(host, int_msg)
+                return [host[i] + delta[i] for i in range(len(delta))]
 
-test = SDCS((3, 2, 17), [1,2,6])
-print(test.embed([2,1,0], 5))
+#test = sdcs((3, 2, 17), [1,2,6])
+#print(test.embed([1,0,1], 14))
