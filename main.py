@@ -1,12 +1,11 @@
 import numpy as np
 import cv2
 import math
-import random
 import pickle
 
-from numpy.core.shape_base import block
 from sdcs import sdcs
 from stc import stc
+from rs import *
 
 # to-do:
 # 1. enable program to work with any image dimension //done?
@@ -748,88 +747,78 @@ def robustF5(msg, c1, c2, c3):
     y, _ = stc_obj.generate()
 
 def compress(block, qm, t):
-    return np.around(np.divide(cv2.dct(np.around(cv2.dct(block), decimals=0)), qm[t]), decimals=0)
+    return np.rint(np.divide(cv2.dct(np.rint(cv2.idct(np.multiply(block, qm[t-1])))), qm[t]))
 
-def ditherAdjust(block, Y_flag, k=1, T=1):
+def ditherAdjust(block, Y_flag, k=1, T=2):
     # https://www.sciencedirect.com/science/article/pii/S0165168420300013
-    block_original = block.copy()
-    qm_y = [Y_quant_table, Y_quant_table]
-    qm_c = [C_quant_table, C_quant_table]
+    n = 30
+    qm_y, qm_c = list(), list()
+    for _ in range(n):
+        qm_y.append(Y_quant_table)
+        qm_c.append(C_quant_table)
     if Y_flag:
         qm = qm_y
     else:
         qm = qm_c
-    block_zero = np.multiply(qm[0], block)
-    n = 2
+    block_original = block.copy()
     for t in range(1, n):
-        block = np.divide(block_zero, qm[t-1])
+        #block = np.multiply(block, qm[t-1])
+        block_tilde = block.copy()
         while True:
             if k > T:
                 break
             block = compress(block, qm, t)
-            mod_ind = np.where(block % 2 != block_original % 2)
+            mod_ind = np.where(block % 2 != block_tilde % 2)
             if len(mod_ind[0]) and len(mod_ind[1]) == 0:
                 break
             for row_ind, col_ind in np.dstack(mod_ind)[0]:
-                if block_zero[row_ind][col_ind] == block_original[row_ind][col_ind] + 1:
+                if block[row_ind][col_ind] == block_original[row_ind][col_ind] + 1:
                     block[row_ind][col_ind] -= 2*k
-                elif block_zero[row_ind][col_ind] == block_original[row_ind][col_ind] - 1:
+                elif block[row_ind][col_ind] == block_original[row_ind][col_ind] - 1:
                     block[row_ind][col_ind] += 2*k
             k += 1
-        block = np.multiply(qm[t], block)
+        #block = np.divide(block, qm[t])
     return block
 
-test_block = np.array([[96., -1.,  2.,  1., -0., -0., -0., 0.],
- [-2., -1.,  2.,  0., -0.,  0., -0., -0.],
- [ 1., -0., -1., -0., -0.,  0.,  0., -0.],
- [ 0., -0., -0., -0., -0.,  0.,  0., -0.],
- [ 0., -0., -0.,  0.,  0.,  0., -0.,  0.],
- [ 0.,  0., -0.,  0.,  0., -0.,  0., 0.],
- [ 0.,  0.,  0., -0., -0.,  0., -0., 0.],
- [ 0.,  0., -0., -0.,  0., -0.,  0., -0.]])
-coef_mask = np.array([abs(coef) > 0 for coef in test_block])
-coef_mask[0][0] = False # ignore dc coef
-coefs = np.extract(coef_mask, test_block)
-coefs_ind = np.dstack(np.where(coef_mask == True))[0]
-x = np.array([int(x%2) for x in coefs])
-m = np.array([0,1,1,1])
-stc_obj = stc(np.array([71,109], dtype=np.uint8))
-y, _ = stc_obj.generate(x,m)
-H = stc_obj.gen_H(x,m)
-assert np.array_equal((H @ y) % 2, m)
-for y_i, index in enumerate(coefs_ind):
-    test_block[index[0]][index[1]] += y[y_i] - test_block[index[0]][index[1]]%2
-test_block = ditherAdjust(test_block, True)
-print(test_block, coefs_ind)
-ext_y = [int(test_block[x[0]][x[1]]%2) for x in coefs_ind]
-print(ext_y)
-print((H @ ext_y) % 2, m)
-exit(0)
-
 def acF5(msg, c1 , c2 ,c3):
-    block_i = 0
+    path = list()
+    row_i, block_i = 0, 0
     msg_i = 0
     channel, channel_i = c1, 0
     H_hat = np.array([71,109], dtype=np.uint8)
     stc_obj = stc(H_hat)
     while msg_i < len(msg):
-        block = channel[block_i]
+        block = channel[row_i][block_i]
         coef_mask = np.array([abs(coef) > 0 for coef in block])
-        coef_mask[0][0] = False # ignore dc coef
+        coef_mask[0] = False # ignore dc coef
         coefs = np.extract(coef_mask, block)
-        coefs_ind = np.dstack(np.where(coef_mask == True))[0]
+        if len(coefs) < 8:
+            block_i += 1
+            if block_i >= hor_block_count:
+                row_i += 1
+                block_i = 0
+            continue
+        coefs_ind = np.where(coef_mask == True)[0]
         x = [int(x%2) for x in coefs]
         if msg_i + len(x) // 2 < len(msg):
-            m = m[msg_i:msg_i + len(x)//2]
+            m = msg[msg_i:(msg_i + len(x)//2)]
         else:
-            m = m[msg_i:]
+            m = msg[msg_i:]
+        m = np.array(list(m), dtype=np.uint8)
         msg_i += len(x) // 2
-        y = stc_obj.generate(x,m)
-        for y_i, index in enumerate(coefs_ind):
-            block[index[0]][index[1]] += y[y_i] - block[index[0]][index[1]]%2
+        y, _ = stc_obj.generate(x,m)
+        block_path = list()
+        for y_i, coef_i in enumerate(coefs_ind):
+            block[coef_i] += y[y_i] - block[coef_i]%2
+            block_path.append(coef_i) #row, coef
         # we now have an stc encoded block, so we must now perform the dither adjustment
-        block = ditherAdjust(block, True if channel_i == 0 else False)
+        block = ditherAdjust(block.reshape((8,8)), True if channel_i == 0 else False)
+        path.append([channel_i, row_i, block_i, block_path])
         block_i += 1
+        if block_i >= hor_block_count:
+            row_i += 1
+            block_i = 0
+    return path, c1, c2, c3
 
 def F5(msg, c1, c2, c3):
     # c1, c2, c3 = y,cb,cr
@@ -906,9 +895,14 @@ except:
 """
 message = "reed solomon"
 bin_msg = messageConv(message)
-#print(len(bin_msg), bin_msg)
+message_poly = prepareBitString(bin_msg)
+encoded_poly = encodeMsg(message_poly)
+
 if len(bin_msg) > MAX_PAYLOAD:
     raise ValueError('Message too long')
+
+bin_poly = [format(num, '08b') for num in np.array(encoded_poly, dtype=np.uint8)]
+bin_msg = ''.join([bit for bit in bin_poly])
 
 # split image into 8x8 blocks and store in img_tiles
 # note that this is a downsampling ratio of 4:4:4 (no downsampling), others added later?
@@ -953,7 +947,7 @@ print("finished zigzag")
 # generate pseudo-random path for encoding message along
 # and encode message along path
 print("encoding message...")
-encode_path, Y_zz_img, Cb_zz_img, Cr_zz_img = sdcsF5(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
+encode_path, Y_zz_img, Cb_zz_img, Cr_zz_img = acF5(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
 #print(encode_path)
 with open('.msgpath', 'wb') as fp:
     pickle.dump(encode_path, fp)
@@ -1034,4 +1028,36 @@ try:
                     ac_i += 1
                     continue
                 ac_i += 1
+"""
+
+"""
+test_block = np.array([[96., -1.,  2.,  1., -0., -0., -0., 0.],
+ [-2., -1.,  2.,  0., -0.,  0., -0., -0.],
+ [ 1., -0., -1., -0., -0.,  0.,  0., -0.],
+ [ 0., -0., -0., -0., -0.,  0.,  0., -0.],
+ [ 0., -0., -0.,  0.,  0.,  0., -0.,  0.],
+ [ 0.,  0., -0.,  0.,  0., -0.,  0., 0.],
+ [ 0.,  0.,  0., -0., -0.,  0., -0., 0.],
+ [ 0.,  0., -0., -0.,  0., -0.,  0., -0.]])
+
+print(np.rint(np.divide(cv2.dct(np.rint(cv2.idct(np.multiply(test_block, Y_quant_table)))), Y_quant_table)))
+
+coef_mask = np.array([abs(coef) > 0 for coef in test_block])
+coef_mask[0][0] = False # ignore dc coef
+coefs = np.extract(coef_mask, test_block)
+coefs_ind = np.dstack(np.where(coef_mask == True))[0]
+x = np.array([int(x%2) for x in coefs])
+m = np.array([0,1,1,1])
+stc_obj = stc(np.array([71,109], dtype=np.uint8))
+y, _ = stc_obj.generate(x,m)
+H = stc_obj.gen_H(x,m)
+assert np.array_equal((H @ y) % 2, m)
+for y_i, index in enumerate(coefs_ind):
+    test_block[index[0]][index[1]] += y[y_i] - test_block[index[0]][index[1]]%2
+test_block = ditherAdjust(test_block, True)
+print(test_block)
+ext_y = [int(test_block[x[0]][x[1]]%2) for x in coefs_ind]
+print(ext_y)
+print((H @ ext_y) % 2, m)
+exit(0)
 """
