@@ -1,11 +1,8 @@
-from re import S
 import numpy as np
 from numpy.core import atleast_1d
 import numpy.core.numeric as NX
 import pickle
 import os.path
-from numpy.lib.polynomial import poly
-from numpy.testing._private.utils import KnownFailureException
 
 """ 
 Irreducible polynomials order 8 for UTF-8 support
@@ -79,6 +76,7 @@ def divide(num1, num2):
     return multiply(num1, num2_inv)
 
 # Adds two polynomials of arbitrary lengths together under the GF
+# Takes two np arrays and returns one np array
 def polyAdd(poly1, poly2):
     len1, len2 = len(poly1), len(poly2)
     len_diff = len1 - len2
@@ -93,6 +91,7 @@ def polyAdd(poly1, poly2):
     return poly_sum
 
 # Visciously stolen from numpy sourcecode and modified to work in GFs
+# Takes two numpy arrays and returns two numpy arrays, quotient and remainder
 def polyDiv(u, v):
     u = atleast_1d(u) + 0.0
     v = atleast_1d(v) + 0.0
@@ -105,7 +104,6 @@ def polyDiv(u, v):
     q = NX.zeros((max(m - n + 1, 1),), w.dtype)
     r = u.astype(w.dtype)
     for k in range(0, m-n+1):
-        #print(f"line {k}:", v, r, v[0], r[k])
         if int(v[0]) == 0:
             scale = 1
         else:
@@ -160,8 +158,6 @@ def polyVal(poly, val):
         result = add(result, multiply(coef, exponent(val, deg-i)))
     return result
 
-
-#print("TEST:", polyVal([14,14,1],ANTILOG_TABLE[(-j)%N]))
 
 # Euclid's algorithm for finding the GCM of two polynomials
 # Takes two arrays, returns one array (GCM).
@@ -277,7 +273,7 @@ def detectErrors(R_x):
 
 # Message will be a two-dimensional array containing k-1 decimal (from 8-bit) symbols.
 # returns message*n^(N-K)+remainder=T(x)
-def encode(message):
+def encodeMsg(message):
     if len(message) == 0:
         raise Exception('Message length zero')
     if len(message) > K:
@@ -330,14 +326,14 @@ else:
 
 LOG_TABLE = {a_j: j for j, a_j in ANTILOG_TABLE.items()}
 
-
-#bitstring = '011100100110010101100101011001000010000001110011011011110110110001101111011011010110111101101110'
-#message_poly = prepareBitString(bitstring)
-encoded_poly = encode([1,2,3,4,5,6,7,8,9,10,11])
+"""
+bitstring = '011100100110010101100101011001000010000001110011011011110110110001101111011011010110111101101110'
+message_poly = prepareBitString(bitstring)
+encoded_poly = encodeMsg(message_poly)
 print("encoded:", encoded_poly)
 error_poly = encoded_poly.copy()
-# two consecutive same numbers [115, 115, 110, 120...] breaks it for some reason?
-# doesnt break in gf(16)...
+
+# alright i think it was cuz polyval was broken, didnt eval if deg=1
 error_poly[0] = 2.
 error_poly[2] = 2.
 #error_poly[3] = 2.
@@ -347,6 +343,8 @@ corrected_poly = detectErrors(error_poly)
 print("corrected:",corrected_poly)
 assert np.array_equal(encoded_poly, corrected_poly)
 print("***pass***")
+"""
+
 
 """
 to do:
