@@ -5,7 +5,7 @@ import pickle
 
 from sdcs import sdcs
 from stc import stc
-from rs import *
+from rs import rs
 
 # to-do:
 # 1. enable program to work with any image dimension //done?
@@ -749,13 +749,18 @@ def robustF5(msg, c1, c2, c3):
 def compress(block, qm, t):
     return np.rint(np.divide(cv2.dct(np.rint(cv2.idct(np.multiply(block, qm[t-1])))), qm[t]))
 
+def genQFactor(q, m):
+    s = 5000/q if q < 50 else 200-2*q
+    op = lambda x: np.floor((s * x + 50)/100)
+    return np.array([op(x) for x in m])
+
 def ditherAdjust(block, Y_flag, k=1, T=2):
     # https://www.sciencedirect.com/science/article/pii/S0165168420300013
     n = 30
     qm_y, qm_c = list(), list()
-    for _ in range(n):
-        qm_y.append(Y_quant_table)
-        qm_c.append(C_quant_table)
+    for q in range(90, 90-n-1, -1):
+        qm_y.append(genQFactor(q, Y_quant_table))
+        qm_c.append(genQFactor(q, C_quant_table))
     if Y_flag:
         qm = qm_y
     else:
@@ -893,15 +898,16 @@ except:
     print("Please enter a string")
     quit(1)
 """
+rs_param = 256
+rs_obj = rs(rs_param)
 message = "reed solomon"
 bin_msg = messageConv(message)
-message_poly = prepareBitString(bin_msg)
-encoded_poly = encodeMsg(message_poly)
+message_poly = rs_obj.prepareMessage(bin_msg)
 
 if len(bin_msg) > MAX_PAYLOAD:
     raise ValueError('Message too long')
 
-bin_poly = [format(num, '08b') for num in np.array(encoded_poly, dtype=np.uint8)]
+bin_poly = [format(num, '08b') for num in np.array(message_poly, dtype=np.uint8)]
 bin_msg = ''.join([bit for bit in bin_poly])
 
 # split image into 8x8 blocks and store in img_tiles
