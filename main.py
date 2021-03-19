@@ -562,13 +562,7 @@ def huffman(Y_dc_arr, Y_ac_arr, Cb_dc_arr, Cb_ac_arr, Cr_dc_arr, Cr_ac_arr):
     return bitstring
 
 def messageConv(message):
-    bin_string = ""
-    for char in message:
-        bin_val = bin(ord(char))[2:]
-        while len(bin_val) < 8:
-            bin_val = '0' + bin_val
-        bin_string += bin_val
-    return bin_string
+    return ''.join([format(ord(x), '08b') for x in message])
 
 """
 def genRandomPath(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img):
@@ -754,20 +748,17 @@ def genQFactor(q, m):
     op = lambda x: np.floor((s * x + 50)/100)
     return np.array([op(x) for x in m])
 
-def ditherAdjust(block, Y_flag, k=1, T=2):
+def ditherAdjust(block, Y_flag, k=1, T=2, n=30):
     # https://www.sciencedirect.com/science/article/pii/S0165168420300013
-    n = 30
-    qm_y, qm_c = list(), list()
-    for q in range(90, 90-n-1, -1):
-        qm_y.append(genQFactor(q, Y_quant_table))
-        qm_c.append(genQFactor(q, C_quant_table))
+    qm = list()
     if Y_flag:
-        qm = qm_y
+        for q in range(90, 90-n-1, -1):
+            qm.append(genQFactor(q, Y_quant_table))
     else:
-        qm = qm_c
+        for q in range(90, 90-n-1, -1):
+            qm.append(genQFactor(q, C_quant_table))
     block_original = block.copy()
     for t in range(1, n):
-        #block = np.multiply(block, qm[t-1])
         block_tilde = block.copy()
         while True:
             if k > T:
@@ -891,13 +882,6 @@ with open('.imgdim', 'wb') as fp:
 
 # ensure message isnt embedded in padded bits?
 
-"""
-try:
-    message = str(input("Enter message: "))
-except:
-    print("Please enter a string")
-    quit(1)
-"""
 rs_param = 256
 rs_obj = rs(rs_param)
 message = "reed solomon"
