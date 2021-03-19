@@ -267,7 +267,7 @@ def blockify(img):
         # append rows individually to the image matrix
         # this ensure the dimensions are consistent
         img_tiles.append(img_tiles_row)
-    return img_tiles
+    return np.array(img_tiles, dtype=np.float32)
 
 def YCbCr_convert(bgr):
     # values from https://wikipedia.org/wiki/YCbCr#JPEG_conversion
@@ -319,97 +319,15 @@ def DCT_2(Y_img):
         dct_img.append(np.array(dct_img_row))
     return np.array(dct_img)
 
-def quantizeAndRound(Y_img, Y_flag):
+def quantizeAndRound(img, Y_flag):
     # quantizes DCT coefs in-place using quant_table_2 atm (add quality options later)
     # then rounds to nearest integer
-    Y_img_len = len(Y_img)
-    for row_block_i in range(Y_img_len):
-        row_len = len(Y_img[row_block_i])
-        for block_i in range(row_len):
-            # divide by relevant quantization table
-            if Y_flag:
-                np.divide(Y_img[row_block_i][block_i], Y_quant_table, Y_img[row_block_i][block_i])
-            else:
-                np.divide(Y_img[row_block_i][block_i], C_quant_table, Y_img[row_block_i][block_i])
-            # round to nearest int
-            np.rint(Y_img[row_block_i][block_i], Y_img[row_block_i][block_i])
-    return Y_img
+    table = Y_quant_table if Y_flag else C_quant_table
+    return np.array([np.rint(np.divide(block, table)) for block in np.array([row for row in img])])
 
-def zigZagEncode(Y_img):
-    # i know this looks horrible but it is honestly the fastest way to do it!
+def zigZagEncode(img):
     # convert 8x8 block of dct coef's into a 64-len array via zig zag arrangement
-    zz_image = []
-    for row_block in Y_img:
-        zz_row = []
-        for out_block in row_block:
-            zz_array = np.zeros(64)
-            zz_array[0] = out_block[0][0]
-            zz_array[1] = out_block[0][1]
-            zz_array[2] = out_block[1][0]
-            zz_array[3] = out_block[2][0]
-            zz_array[4] = out_block[1][1]
-            zz_array[5] = out_block[0][2]
-            zz_array[6] = out_block[0][3]
-            zz_array[7] = out_block[1][2]
-            zz_array[8] = out_block[2][1]
-            zz_array[9] = out_block[3][0]
-            zz_array[10] = out_block[4][0]
-            zz_array[11] = out_block[3][1]
-            zz_array[12] = out_block[2][2]
-            zz_array[13] = out_block[1][3]
-            zz_array[14] = out_block[0][4]
-            zz_array[15] = out_block[0][5]
-            zz_array[16] = out_block[1][4]
-            zz_array[17] = out_block[2][3]
-            zz_array[18] = out_block[3][2]
-            zz_array[19] = out_block[4][1]
-            zz_array[20] = out_block[5][0]
-            zz_array[21] = out_block[6][0]
-            zz_array[22] = out_block[5][1]
-            zz_array[23] = out_block[4][2]
-            zz_array[24] = out_block[3][3]
-            zz_array[25] = out_block[2][4]
-            zz_array[26] = out_block[1][5]
-            zz_array[27] = out_block[0][6]
-            zz_array[28] = out_block[0][7]
-            zz_array[29] = out_block[1][6]
-            zz_array[30] = out_block[2][5]
-            zz_array[31] = out_block[3][4]
-            zz_array[32] = out_block[4][3]
-            zz_array[33] = out_block[5][2]
-            zz_array[34] = out_block[6][1]
-            zz_array[35] = out_block[7][0]
-            zz_array[36] = out_block[7][1]
-            zz_array[37] = out_block[6][2]
-            zz_array[38] = out_block[5][3]
-            zz_array[39] = out_block[4][4]
-            zz_array[40] = out_block[3][5]
-            zz_array[41] = out_block[2][6]
-            zz_array[42] = out_block[1][7]
-            zz_array[43] = out_block[2][7]
-            zz_array[44] = out_block[3][6]
-            zz_array[45] = out_block[4][5]
-            zz_array[46] = out_block[5][4]
-            zz_array[47] = out_block[6][3]
-            zz_array[48] = out_block[7][2]
-            zz_array[49] = out_block[7][3]
-            zz_array[50] = out_block[6][4]
-            zz_array[51] = out_block[5][5]
-            zz_array[52] = out_block[4][6]
-            zz_array[53] = out_block[3][7]
-            zz_array[54] = out_block[4][7]
-            zz_array[55] = out_block[5][6]
-            zz_array[56] = out_block[6][5]
-            zz_array[57] = out_block[7][4]
-            zz_array[58] = out_block[7][5]
-            zz_array[59] = out_block[6][6]
-            zz_array[60] = out_block[5][7]
-            zz_array[61] = out_block[6][7]
-            zz_array[62] = out_block[7][6]
-            zz_array[63] = out_block[7][7]
-            zz_row.append(zz_array)
-        zz_image.append(np.array(zz_row))
-    return np.array(zz_image)
+    return np.array([np.array([np.hstack([np.diagonal(block[::-1,:], k)[::(2*(k % 2)-1)] for k in range(1-block.shape[0], block.shape[0])]) for block in row]) for row in img])
 
 def RLEandDPCM(zz_img):
     # create array of all DC values, encoded using DPCM - each value is the difference
@@ -858,8 +776,9 @@ def F5(msg, c1, c2, c3):
 
 # read image (ability to input image name to be added later)
 # get image dimensions
-image_name = 'cbat.png'
+image_name = 'fagen.png'
 img = readImage(image_name)
+img = cv2.cvtColor(img, cv2.COLOR_BGR2YCR_CB)
 #print(img)
 img_height, img_width = getImageDimensions(img)
 #img_height_copy, img_width_copy = img_height, img_width
@@ -899,19 +818,16 @@ bin_msg = ''.join([bit for bit in bin_poly])
 hor_block_count = img_width // BLOCK_SIZE
 ver_block_count = img_height // BLOCK_SIZE
 
-img_tiles = blockify(img)
-# convert from list to numpy array
-img_tiles = np.array(img_tiles)
-
-# values to floats for DCT
-img_tiles = [np.float32(tile) for tile in img_tiles]
+Y_img, Cr_img, Cb_img = cv2.split(img)
+Y_img, Cr_img, Cb_img = blockify(Y_img), blockify(Cr_img), blockify(Cb_img)
+print("Separated successfully")
 
 # convert BGR to YCbCr
 # the image is in img_tiles with YCbCr pixels
 # Y_img contains the 8x8 blocks of just the Y values for use in DCT
 
-img_tiles, Y_img, Cb_img, Cr_img = BGR2YCbCr(img_tiles)
-print("Separated successfully")
+#img_tiles, Y_img, Cb_img, Cr_img = BGR2YCbCr(img_tiles)
+#print("Separated successfully")
 
 # perform DCT transform.....
 print("beginning dct...")
