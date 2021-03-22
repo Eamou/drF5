@@ -2,9 +2,12 @@ import numpy as np
 import cv2
 import math
 import pickle
+import os.path
+from Crypto.Cipher import AES
+
 from sdcs import sdcs
 from stc import stc
-from rs import *
+from rs import rs
 
 Y_quant_table = np.array([[
     16, 11, 10, 16, 24, 40, 51, 61],
@@ -307,7 +310,7 @@ def huffmanDecode(bitstring):
     return Y_decoded_img, Cb_decoded_img, Cr_decoded_img
 
 def unRLE(decoded_img):
-    zz_img = []
+    zz_img = list()
     for block in decoded_img:
         zz_block = np.zeros(64)
         zz_block[0] = block[0]
@@ -328,91 +331,19 @@ def unDPCM(zz_img):
     return zz_img
 
 def unZigZag(zz_img):
-    img_tiles, block_row = [], []
-    for zz_array in zz_img:
-        # this needs to be updated to change 50 to the actual dimensions of the image
-        out_block = np.zeros((8,8))
-        out_block[0][0] = zz_array[0]
-        out_block[0][1] = zz_array[1]
-        out_block[1][0] = zz_array[2]
-        out_block[2][0] = zz_array[3]
-        out_block[1][1] = zz_array[4]
-        out_block[0][2] = zz_array[5]
-        out_block[0][3] = zz_array[6]
-        out_block[1][2] = zz_array[7]
-        out_block[2][1] = zz_array[8]
-        out_block[3][0] = zz_array[9]
-        out_block[4][0] = zz_array[10]
-        out_block[3][1] = zz_array[11]
-        out_block[2][2] = zz_array[12]
-        out_block[1][3] = zz_array[13]
-        out_block[0][4] = zz_array[14]
-        out_block[0][5] = zz_array[15]
-        out_block[1][4] = zz_array[16]
-        out_block[2][3] = zz_array[17]
-        out_block[3][2] = zz_array[18]
-        out_block[4][1] = zz_array[19]
-        out_block[5][0] = zz_array[20]
-        out_block[6][0] = zz_array[21]
-        out_block[5][1] = zz_array[22]
-        out_block[4][2] = zz_array[23]
-        out_block[3][3] = zz_array[24]
-        out_block[2][4] = zz_array[25]
-        out_block[1][5] = zz_array[26]
-        out_block[0][6] = zz_array[27]
-        out_block[0][7] = zz_array[28]
-        out_block[1][6] = zz_array[29]
-        out_block[2][5] = zz_array[30]
-        out_block[3][4] = zz_array[31]
-        out_block[4][3] = zz_array[32]
-        out_block[5][2] = zz_array[33]
-        out_block[6][1] = zz_array[34]
-        out_block[7][0] = zz_array[35]
-        out_block[7][1] = zz_array[36]
-        out_block[6][2] = zz_array[37]
-        out_block[5][3] = zz_array[38]
-        out_block[4][4] = zz_array[39]
-        out_block[3][5] = zz_array[40]
-        out_block[2][6] = zz_array[41]
-        out_block[1][7] = zz_array[42]
-        out_block[2][7] = zz_array[43]
-        out_block[3][6] = zz_array[44]
-        out_block[4][5] = zz_array[45]
-        out_block[5][4] = zz_array[46]
-        out_block[6][3] = zz_array[47]
-        out_block[7][2] = zz_array[48]
-        out_block[7][3] = zz_array[49]
-        out_block[6][4] = zz_array[50]
-        out_block[5][5] = zz_array[51]
-        out_block[4][6] = zz_array[52]
-        out_block[3][7] = zz_array[53]
-        out_block[4][7] = zz_array[54]
-        out_block[5][6] = zz_array[55]
-        out_block[6][5] = zz_array[56]
-        out_block[7][4] = zz_array[57]
-        out_block[7][5] = zz_array[58]
-        out_block[6][6] = zz_array[59]
-        out_block[5][7] = zz_array[60]
-        out_block[6][7] = zz_array[61]
-        out_block[7][6] = zz_array[62]
-        out_block[7][7] = zz_array[63]
-        block_row.append(out_block)
-        if len(block_row) == hor_block_count:
-            img_tiles.append(np.array(block_row))
-            block_row = []
-    return np.array(img_tiles)
-
-def deQuantize(Y_img, Y_flag):
-    Y_img_len = len(Y_img)
-    for row_block_i in range(Y_img_len):
-        row_len = len(Y_img[row_block_i])
-        for block_i in range(row_len):
-            # divide by quantization table
-            if Y_flag:
-                np.multiply(Y_quant_table, Y_img[row_block_i][block_i], Y_img[row_block_i][block_i])
-            else:
-                np.multiply(C_quant_table, Y_img[row_block_i][block_i], Y_img[row_block_i][block_i])
-    return Y_img
+    id_block = np.resize(np.arange(BLOCK_SIZE*BLOCK_SIZE), (BLOCK_SIZE, BLOCK_SIZE))
+    indices = np.hstack([np.diagonal(id_block[::-1,:], k)[::(2*(k % 2)-1)] for k in range(1-id_block.shape[0], id_block.shape[0])])
+    img=list()
+    for zz_block in zz_img:
+        block = np.zeros(BLOCK_SIZE*BLOCK_SIZE)
+        for i, ind in enumerate(indices):
+            block[ind] = zz_block[i]
+        img.append(np.resize(block, (BLOCK_SIZE,BLOCK_SIZE)))
+    return np.resize(img, (hor_block_count,ver_block_count,BLOCK_SIZE,BLOCK_SIZE))
+    
+def deQuantize(img, Y_flag):
+    table = Y_quant_table if Y_flag else C_quant_table
+    return np.array([np.multiply(block, table) for block in np.array([row for row in img])])
 
 def w(k_num):
     # for use in DCT transformation
@@ -421,16 +352,9 @@ def w(k_num):
     else:
         return 1
 
-def DCT_3(img_comp):
+def DCT_3(img):
     # basically the same as DCT2, but returns Y values from DCT coefs!
-    dct_img = []
-    for row_block in img_comp:
-        dct_row = []
-        for block in row_block:
-            dct_block = cv2.idct(block)
-            dct_row.append(dct_block)
-        dct_img.append(np.array(dct_row))
-    return np.array(dct_img)
+    return np.array([np.array([cv2.idct(block) for block in row]) for row in img])
 
 def BGR_convert(YCbCr):
     # values from https://wikipedia.org/wiki/YCbCr#JPEG_conversion
@@ -441,14 +365,14 @@ def BGR_convert(YCbCr):
     return B, G, R
 
 def YCbCr2BGR(Y_img, Cb_img, Cr_img):
-    img = []
+    img = list()
     # I know this looks bad but it's only O(n^2)!
     for row in range(ver_block_count):
-        img_tiles = []
+        img_tiles = list()
         for column in range(hor_block_count):
-            BGR_block = []
+            BGR_block = list()
             for block in range(BLOCK_SIZE):
-                pixel_row = []
+                pixel_row = list()
                 for pixel_i in range(BLOCK_SIZE):
                     Y_val = Y_img[row][column][block][pixel_i]
                     Cb_val = Cb_img[row][column][block][pixel_i]
@@ -460,7 +384,7 @@ def YCbCr2BGR(Y_img, Cb_img, Cr_img):
     return np.array(img)
 
 def assembleImage(img_tiles):
-    img, row = [], []
+    img, row = list(), list()
     num_rows = len(img_tiles)
     for row_i in range(num_rows):
         num_cols = len(img_tiles[row_i])
@@ -470,7 +394,7 @@ def assembleImage(img_tiles):
                 for block in range(block_len):
                     row.append(img_tiles[row_i][col_i][pixel][block])
             img.append(np.array(row))
-            row = []
+            row = list()
     return np.array(img)
 
 """
@@ -595,6 +519,45 @@ def extractF5(msg_path, img):
             char = ''
     return message
 
+def retrievePath(key):
+    if os.path.isfile("path_key.bin"):
+        file_in = open("path_key.bin", "rb")
+        nonce, tag, ciphertext = [ file_in.read(x) for x in (16,16,-1) ]
+
+        cipher = AES.new(key, AES.MODE_EAX, nonce)
+        data = cipher.decrypt_and_verify(ciphertext, tag)
+        path = data.decode()
+    else:
+        raise FileNotFoundError("Can't find path file - ensure it is named 'path_key.bin'")
+    new_path = list()
+    path = np.array(list(path), dtype=np.uint8)
+    split_path = np.split(path, len(path)//2)
+    split_path = [''.join([str(x) for x in a]) for a in split_path]
+    partition = list()
+    i = 0
+    bsize = len(str(ver_block_count * hor_block_count))
+    if bsize % 2 != 0: bsize += 1
+    while i < len(split_path):
+        partition += [int(split_path[i])]
+        i += 1
+
+        block = int(str(''.join([str(x) for x in split_path[i:i+(bsize//2)]])))
+        row_i = block // hor_block_count
+        block_i = block % hor_block_count
+        partition += [int(row_i), int(block_i)]
+        i += bsize//2
+
+        block_path = list()
+        while split_path[i] != '00':
+            block_path.append(int(split_path[i]))
+            i += 1
+        i += 1
+        partition.append(block_path)
+        new_path.append(partition)
+        partition = list()
+
+    return new_path
+         
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
@@ -608,8 +571,8 @@ BLOCK_SIZE = 8
 with open('jpeg.txt', 'r') as f:
     bitstring = f.read()
 
-with open ('.msgpath', 'rb') as fp:
-    msg_path = pickle.load(fp)
+#with open ('.msgpath', 'rb') as fp:
+#    msg_path = pickle.load(fp)
 
 with open ('.imgdim', 'rb') as fp:
     img_height, img_width = pickle.load(fp)
@@ -619,6 +582,9 @@ with open ('.v_imgdim', 'rb') as fp:
 
 hor_block_count = img_width // BLOCK_SIZE
 ver_block_count = img_height // BLOCK_SIZE
+
+key = b'Sixteen byte key'
+msg_path = retrievePath(key)
 
 # extract data from Huffman encoding
 Y_decoded_img, Cb_decoded_img, Cr_decoded_img = huffmanDecode(bitstring)
@@ -631,8 +597,10 @@ Cr_zz_img = unRLE(Cr_decoded_img)
 print("extracted zigzags")
 
 # extract message
+rs_param = 256
+rs_obj = rs(rs_param)
 message = extractacF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
-corrected_message = detectErrors(message)
+corrected_message = rs_obj.detectErrors(message)
 final_message = ''.join([chr(x) for x in corrected_message[:len(corrected_message)-16]])
 print("extracted message:", final_message)
 
@@ -657,7 +625,7 @@ Cb_dct_img = deQuantize(Cb_img_tiles, False)
 Cr_dct_img = deQuantize(Cr_img_tiles, False)
 print("reversed quantization")
 
-# inverse DCT and shift +128
+# inverse DCT
 print("beginning dct...")
 Y_img = DCT_3(Y_dct_img)
 Cb_img = DCT_3(Cb_dct_img)

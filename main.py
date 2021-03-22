@@ -2,6 +2,8 @@ import numpy as np
 import cv2
 import math
 import pickle
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
 
 from sdcs import sdcs
 from stc import stc
@@ -12,10 +14,6 @@ from rs import rs
 # 2. enable chroma subsampling - not required but might be nice
 # 3. jpeg quality options?
 # 4. command line options for the 2 and 3
-
-# quantization tables - these will be changed later
-# possibly stored in a file?
-# option to change encoding quality added later
 
 # use a unique hamming/reed-solomon code to encode each letter, ensuring each letter
 # uses any particular block no more than once. this way, if there are multiple bits in a block
@@ -269,36 +267,6 @@ def blockify(img):
         img_tiles.append(img_tiles_row)
     return np.array(img_tiles, dtype=np.float32)
 
-def YCbCr_convert(bgr):
-    # values from https://wikipedia.org/wiki/YCbCr#JPEG_conversion
-    B, G, R = bgr
-    Y = (0.299*R)+(0.587*G)+(0.114*B)
-    Cb = 128 - (0.168736*R) - (0.331264*G) + (0.5 * B)
-    Cr = 128 + (0.5 * R) - (0.418688 * G) - (0.081312 * B)
-    return Y, Cb, Cr
-
-def BGR2YCbCr(img_tiles):
-    # perform conversion for each pixel
-    Y_img, Cb_img, Cr_img = [], [], []
-    # I know this looks bad but it's only O(n^2)!
-    for row in range(ver_block_count):
-        Y_tiles, Cb_tiles, Cr_tiles = [], [], []
-        for column in range(hor_block_count):
-            Y_block, Cb_block, Cr_block = np.zeros((8,8)), np.zeros((8,8)), np.zeros((8,8))
-            for block in range(BLOCK_SIZE):
-                for pixel_i in range(BLOCK_SIZE):
-                    pixel = np.array(YCbCr_convert(img_tiles[row][column][block][pixel_i]))
-                    img_tiles[row][column][block][pixel_i] = pixel
-                    # shift by -128 when using own dct!
-                    Y_block[block][pixel_i], Cb_block[block][pixel_i], Cr_block[block][pixel_i] = pixel
-            Y_tiles.append(Y_block)
-            Cb_tiles.append(Cb_block)
-            Cr_tiles.append(Cr_block)
-        Y_img.append(np.array(Y_tiles))
-        Cb_img.append(np.array(Cb_tiles))
-        Cr_img.append(np.array(Cr_tiles))     
-    return img_tiles, np.array(Y_img), np.array(Cb_img), np.array(Cr_img)
-
 def w(k_num):
     # for use in DCT transformation
     if k_num == 0:
@@ -306,18 +274,9 @@ def w(k_num):
     else:
         return 1
 
-def DCT_2(Y_img):
-    # transform Y values into DCT coefficients
-    # i think this is O(N^2) as it goes through the whole block
-    # for each value in the block. definitely the slowest part of the process either way
-    dct_img = []
-    for row_block in Y_img:
-        dct_img_row = []
-        for block in row_block:
-            out_block = cv2.dct(block)
-            dct_img_row.append(out_block)
-        dct_img.append(np.array(dct_img_row))
-    return np.array(dct_img)
+def DCT_2(img):
+    # transform img into DCT coefficients
+    return np.array([np.array([cv2.dct(block) for block in row]) for row in img])
 
 def quantizeAndRound(img, Y_flag):
     # quantizes DCT coefs in-place using quant_table_2 atm (add quality options later)
@@ -326,6 +285,7 @@ def quantizeAndRound(img, Y_flag):
     return np.array([np.rint(np.divide(block, table)) for block in np.array([row for row in img])])
 
 def zigZagEncode(img):
+    # https://stackoverflow.com/questions/39440633/matrix-to-vector-with-python-numpy
     # convert 8x8 block of dct coef's into a 64-len array via zig zag arrangement
     return np.array([np.array([np.hstack([np.diagonal(block[::-1,:], k)[::(2*(k % 2)-1)] for k in range(1-block.shape[0], block.shape[0])]) for block in row]) for row in img])
 
@@ -335,12 +295,12 @@ def RLEandDPCM(zz_img):
     # create array of RLE-encoded AC values - [skip, value]
     # where skip is the number of zeroes preceeding value.
     # [0,0] indicates the end of the block and is appended to the end
-    dc_array, ac_arrays = [], []
+    dc_array, ac_arrays = list(), list()
     zz_img_len = len(zz_img)
     for row_block_i in range(zz_img_len):
         row_len = len(zz_img[row_block_i])
         for block_i in range(row_len):
-            ac_rle = []
+            ac_rle = list()
             if block_i == 0 and row_block_i == 0:
                 # encode the first DC value as-is
                 dc_array.append(zz_img[row_block_i][block_i][0])
@@ -538,34 +498,6 @@ def padImageWidth(img):
 def findMaxPayload(img_height, img_width):
     return (img_height // BLOCK_SIZE * img_width // BLOCK_SIZE) * MAX_COEF_NUM
 
-def writeHeader(bitstring):
-    # byte is 16 bits
-    ####### UNDER CONSTRUCTION #######
-    
-    # SOI is always the same
-    SOI = 'FFD8'
-    
-    # JFIF takes some work
-    JFIF_APP0 = 'FFE0'
-    JFIF_LEN = '0010' # calculated based on the rest
-    JFIF_ID = '4A46494600' # doesn't change
-    JFIF_VER = '0101' # version 1.02
-    JFIF_UNITS = '00' # specified via Xdensity and Ydensity as an aspect ratio
-    JFIF_Xden = '0001' # set as default values, change if needed
-    JFIF_Yden = '0001'
-    aspect_ratio = img_width_copy // img_height_copy
-    if aspect_ratio == 0:
-        JFIF_Xden = '0001'
-        JFIF_Yden = '0001'
-    JFIF_XThumb = '00'
-    JFIF_YThumb = '00'
-    JFIF = JFIF_APP0 + JFIF_LEN + JFIF_ID + JFIF_VER + JFIF_UNITS + JFIF_Xden + JFIF_Yden + JFIF_XThumb + JFIF_YThumb
-    
-    # quantization table(s)
-    DQT = 'FFDB'
-
-    EOI = 'FFD9'
-
 def lsbF5(x):
     if x < 0:
         return int((1 - x) % 2)
@@ -695,8 +627,9 @@ def ditherAdjust(block, Y_flag, k=1, T=2, n=30):
     return block
 
 def acF5(msg, c1 , c2 ,c3):
+    hash_path = ''
     path = list()
-    row_i, block_i = 0, 0
+    row_i, block_i, global_block_i = 0, 0, 0
     msg_i = 0
     channel, channel_i = c1, 0
     H_hat = np.array([71,109], dtype=np.uint8)
@@ -708,6 +641,7 @@ def acF5(msg, c1 , c2 ,c3):
         coefs = np.extract(coef_mask, block)
         if len(coefs) < 8:
             block_i += 1
+            global_block_i += 1
             if block_i >= hor_block_count:
                 row_i += 1
                 block_i = 0
@@ -728,11 +662,15 @@ def acF5(msg, c1 , c2 ,c3):
         # we now have an stc encoded block, so we must now perform the dither adjustment
         block = ditherAdjust(block.reshape((8,8)), True if channel_i == 0 else False)
         path.append([channel_i, row_i, block_i, block_path])
+        int_format = len(str(ver_block_count*hor_block_count))
+        if int_format % 2 != 0: int_format += 1
+        hash_path += ''.join(['0', str(channel_i), str(global_block_i).zfill(len(str(ver_block_count*hor_block_count)))] + [str(x).zfill(2) for x in block_path] + ['0','0'])
         block_i += 1
+        global_block_i += 1
         if block_i >= hor_block_count:
             row_i += 1
             block_i = 0
-    return path, c1, c2, c3
+    return hash_path, c1, c2, c3
 
 def F5(msg, c1, c2, c3):
     # c1, c2, c3 = y,cb,cr
@@ -770,9 +708,24 @@ def F5(msg, c1, c2, c3):
             j+=1
     return path, c1, c2, c3
 
+def hashPath(path):
+    byte_path = str.encode(path)
+    key = b'Sixteen byte key'
+    print("Your key is: ", key.decode())
+    cipher = AES.new(key, AES.MODE_EAX)
+    ciphertext, tag = cipher.encrypt_and_digest(byte_path)
+
+    file_out = open("path_key.bin", "wb")
+    [ file_out.write(x) for x in (cipher.nonce, tag, ciphertext) ]
+    file_out.close()
+    return 0
+
+
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
+
+# can we embed the path into the header? only 2kb...
 
 # read image (ability to input image name to be added later)
 # get image dimensions
@@ -853,10 +806,11 @@ print("finished zigzag")
 # generate pseudo-random path for encoding message along
 # and encode message along path
 print("encoding message...")
-encode_path, Y_zz_img, Cb_zz_img, Cr_zz_img = acF5(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
+hash_path, Y_zz_img, Cb_zz_img, Cr_zz_img = acF5(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
+hashPath(hash_path)
 #print(encode_path)
-with open('.msgpath', 'wb') as fp:
-    pickle.dump(encode_path, fp)
+#with open('.msgpath', 'wb') as fp:
+#    pickle.dump(path, fp)
 print("encoded and written path to file")
 
 # encode DC coefficients ([0][0]) using DPCM
