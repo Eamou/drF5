@@ -483,15 +483,7 @@ class decoder:
             H = stc_obj.gen_H(y, len(y)//2)
             m = np.array((H @ y) % 2, dtype=np.uint8)
             bit_msg += ''.join([str(bit) for bit in m])
-        char, message = '', list()
-        for bit in bit_msg:
-            char += bit
-            if len(char) == 8:
-                # chr if no rs
-                letter = int(char, 2)
-                message.append(letter)
-                char = ''
-        return np.array(message)
+        return bit_msg
 
     def extractdrF5(self, msg_path, img):
         H_hat = np.array([71,109], dtype=np.uint8)
@@ -506,15 +498,7 @@ class decoder:
             H = stc_obj.gen_H(y, len(y)//2)
             m = np.array((H @ y) % 2, dtype=np.uint8)
             bit_msg += ''.join([str(bit) for bit in m])
-        char, message = '', list()
-        for bit in bit_msg:
-            char += bit
-            if len(char) == 8:
-                # chr if no rs
-                letter = int(char, 2)
-                message.append(letter)
-                char = ''
-        return np.array(message)
+        return bit_msg
 
     def extractsdcsF5(self, msg_path, img):
         n,k,m,a = 3,2,17,[1,2,6]
@@ -533,14 +517,7 @@ class decoder:
             while len(b_bit) < math.floor(math.log(m, 2)):
                 b_bit = '0' + b_bit
             bit_msg += b_bit
-        char, message = '', ''
-        for bit in bit_msg:
-            char += bit
-            if len(char) == 8:
-                letter = chr(int(char, 2))
-                message += letter
-                char = ''
-        return message
+        return bit_msg
 
     def extractF5(self, msg_path, img):
         bit_msg = ""
@@ -552,7 +529,19 @@ class decoder:
             block = (row_i * self.hor_block_count) + block_i
             coef = img[channel][block][coef_i]
             bit_msg += str(int(self.lsbF5(coef)))
-        #print(bit_msg)
+        return bit_msg
+
+    def extractRSPoly(self, bit_msg):
+        char, message = '', list()
+        for bit in bit_msg:
+            char += bit
+            if len(char) == 8:
+                letter = int(char, 2)
+                message.append(letter)
+                char = ''
+        return np.array(message)
+
+    def extractMsgTxt(self, bit_msg):
         char, message = '', ''
         for bit in bit_msg:
             char += bit
@@ -628,9 +617,9 @@ class decoder:
             partition = list()
         return new_path
          
-    def decode(self, img, key, func=2, verbose=True, use_rs=True):
+    def decode(self, img, key, func=2, verbose=True, use_rs=True, output_file="stego"):
         if verbose:
-            with open('jpeg.txt', 'r') as f:
+            with open(img, 'r') as f:
                 bitstring = f.read()
 
             with open ('.imgdim', 'rb') as fp:
@@ -660,15 +649,15 @@ class decoder:
             elif func == 2:
                 msg_path = self.formatPathDMCSS(hash_path)
                 message = self.extractdmcss(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
-            else:
-                raise ValueError('Algorithm must be:\n0: F5\n1: SDCS F5\n2: drF5')
             if use_rs:
                 rs_obj = rs(self.RS_PARAM)
-                corrected_message = rs_obj.detectErrors(message)
+                poly = self.extractRSPoly(message)
+                corrected_message = rs_obj.detectErrors(poly)
                 final_message = ''.join([chr(x) for x in corrected_message[:len(corrected_message)-16]])
                 print("extracted message:", final_message)
 
             else:
+                message = self.extractMsgTxt(message)
                 print("non-rs extracted message:", message)
 
             Y_zz_img = self.unDPCM(Y_zz_img)
@@ -701,14 +690,14 @@ class decoder:
                 final_img = self.removeVPadding(final_img, v_img_height)
             if self.img_width != v_img_width:
                 final_img = self.removeHPadding(final_img, v_img_width)
-            cv2.imwrite('images/color_img.png', final_img)
+            cv2.imwrite(output_file+'.png', final_img)
             print("done!")
         
         else:
-            from main import encoder
+            from encoder import encoder
             encoder_obj = encoder(self.BLOCK_SIZE, self.RS_PARAM)
             encoder_obj.defineBlockCount(self.ver_block_count, self.hor_block_count)
-            with open(img, "rb") as f:
+            with open(img+".jpg", "rb") as f:
                 jpg_img = simplejpeg.decode_jpeg(f.read(), 'BGR', False, False)
             jpg_img = cv2.cvtColor(jpg_img, cv2.COLOR_BGR2YCR_CB)
             self.img_height, self.img_width = self.getImageDimensions(jpg_img)
@@ -735,7 +724,6 @@ class decoder:
             Cb_img_quant = encoder_obj.quantizeAndRound(Cb_img_dct, False)
             Cr_img_quant = encoder_obj.quantizeAndRound(Cr_img_dct, False)
             print("finished quantization and round")
-            #print("bigblock:", Y_img_quant[0][19])
 
             Y_zz_img = encoder_obj.zigZagEncode(Y_img_quant)
             Cb_zz_img = encoder_obj.zigZagEncode(Cb_img_quant)
@@ -747,7 +735,6 @@ class decoder:
             Cr_zz_img = np.reshape(Cr_zz_img, (total_blocks, self.BLOCK_SIZE * self.BLOCK_SIZE))
 
             hash_path = self.retrievePath(key)
-            rs_obj = rs(self.RS_PARAM)
             
             if func == 0:
                 msg_path = self.formatPathF5(hash_path)
@@ -757,12 +744,20 @@ class decoder:
             elif func == 2:
                 msg_path = self.formatPathDMCSS(hash_path)
                 message = self.extractdmcss(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
-            else:
-                raise ValueError('Algorithm must be:\n0: F5\n1: SDCS F5\n2: drF5')
 
-            corrected_message = rs_obj.detectErrors(message)
-            final_message = ''.join([chr(x) for x in corrected_message[:len(corrected_message)-16]])
-            print("extracted message:", final_message)
+            if use_rs:
+                rs_obj = rs(self.RS_PARAM)
+                poly = self.extractRSPoly(message)
+                print(poly)
+                corrected_message = rs_obj.detectErrors(poly)
+                message = ''.join([chr(x) for x in corrected_message[:len(corrected_message)-16]])
+            else:
+                message = self.extractMsgTxt(message)
+                print("non-rs extracted message:", message)
+
+            with open(output_file+".txt", 'w') as f:
+                f.write(message)
+            print("message extracted successfully")
             exit(0)
 
 ########################################
