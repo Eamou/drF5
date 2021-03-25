@@ -546,12 +546,11 @@ class decoder:
         bit_msg = ""
         for bit_loc in msg_path:
             channel = bit_loc[0]
-            row_i = bit_loc[1][0]
-            block_i = bit_loc[1][1]
-            coef_i = bit_loc[1][2]
+            row_i = bit_loc[1]
+            block_i = bit_loc[2]
+            coef_i = bit_loc[3]
             block = (row_i * self.hor_block_count) + block_i
             coef = img[channel][block][coef_i]
-            #print(bit_loc, "=", block, coef_i, "coef:", coef)
             bit_msg += str(int(self.lsbF5(coef)))
         #print(bit_msg)
         char, message = '', ''
@@ -573,9 +572,36 @@ class decoder:
             path = data.decode()
         else:
             raise FileNotFoundError("Can't find path file - ensure it is named 'path_key.bin'")
-        
+        return np.array(list(path), dtype=np.uint8)
+
+    def formatPathF5(self, path):
         new_path = list()
-        path = np.array(list(path), dtype=np.uint8)
+        split_path = np.split(path, len(path)//2)
+        split_path = [''.join([str(x) for x in a]) for a in split_path]
+        partition = list()
+        i = 0
+        rsize = math.ceil(len(str(self.ver_block_count)) / 2)
+        bsize = math.ceil(len(str(self.hor_block_count)) / 2)
+        while i < len(split_path):
+            partition += [int(split_path[i])-1]
+            i += 1
+
+            partition += [int(str(''.join([str(x) for x in split_path[i:i+(rsize)]])))-1]
+            i += rsize
+            
+            partition += [int(str(''.join([str(x) for x in split_path[i:i+(bsize)]])))-1]
+            i += bsize
+
+            while split_path[i] != '00':
+                partition += [int(split_path[i])-1]
+                i += 1
+            i += 1
+            new_path.append(partition)
+            partition = list()
+        return new_path
+
+    def formatPathDMCSS(self, path):  
+        new_path = list()
         split_path = np.split(path, len(path)//2)
         split_path = [''.join([str(x) for x in a]) for a in split_path]
         partition = list()
@@ -602,7 +628,7 @@ class decoder:
             partition = list()
         return new_path
          
-    def decode(self, img, key, func=2, verbose=True):
+    def decode(self, img, key, func=2, verbose=True, use_rs=True):
         if verbose:
             with open('jpeg.txt', 'r') as f:
                 bitstring = f.read()
@@ -616,7 +642,7 @@ class decoder:
             self.hor_block_count = self.img_width // self.BLOCK_SIZE
             self.ver_block_count = self.img_height // self.BLOCK_SIZE
 
-            msg_path = self.retrievePath(key)
+            hash_path = self.retrievePath(key)
             # extract data from Huffman encoding
             Y_decoded_img, Cb_decoded_img, Cr_decoded_img = self.huffmanDecode(bitstring)
             print("finished decode")
@@ -626,18 +652,24 @@ class decoder:
             Cr_zz_img = self.unRLE(Cr_decoded_img)
             print("extracted zigzags")
 
-            rs_obj = rs(self.RS_PARAM)
             if func == 0:
+                msg_path = self.formatPathF5(hash_path)
                 message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
             elif func == 1:
                 message = self.extractsdcsF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
             elif func == 2:
+                msg_path = self.formatPathDMCSS(hash_path)
                 message = self.extractdmcss(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
             else:
                 raise ValueError('Algorithm must be:\n0: F5\n1: SDCS F5\n2: drF5')
-            corrected_message = rs_obj.detectErrors(message)
-            final_message = ''.join([chr(x) for x in corrected_message[:len(corrected_message)-16]])
-            print("extracted message:", final_message)
+            if use_rs:
+                rs_obj = rs(self.RS_PARAM)
+                corrected_message = rs_obj.detectErrors(message)
+                final_message = ''.join([chr(x) for x in corrected_message[:len(corrected_message)-16]])
+                print("extracted message:", final_message)
+
+            else:
+                print("non-rs extracted message:", message)
 
             Y_zz_img = self.unDPCM(Y_zz_img)
             Cb_zz_img = self.unDPCM(Cb_zz_img)
@@ -648,7 +680,6 @@ class decoder:
             Cb_img_tiles = self.unZigZag(Cb_zz_img)
             Cr_img_tiles = self.unZigZag(Cr_zz_img)
             print("restored 8x8 tiles")
-            #print("bigverbose:", Y_img_tiles[0][19])
 
             Y_dct_img = self.deQuantize(Y_img_tiles, True)
             Cb_dct_img = self.deQuantize(Cb_img_tiles, False)
@@ -674,14 +705,12 @@ class decoder:
             print("done!")
         
         else:
-            # im not converting to ycbcr...?
             from main import encoder
             encoder_obj = encoder(self.BLOCK_SIZE, self.RS_PARAM)
             encoder_obj.defineBlockCount(self.ver_block_count, self.hor_block_count)
             with open(img, "rb") as f:
                 jpg_img = simplejpeg.decode_jpeg(f.read(), 'BGR', False, False)
             jpg_img = cv2.cvtColor(jpg_img, cv2.COLOR_BGR2YCR_CB)
-            #print("from jpg:", jpg_img[102][104], jpg_img[102][149])
             self.img_height, self.img_width = self.getImageDimensions(jpg_img)
             encoder_obj.defineImgDim(self.img_height, self.img_width)
             if self.img_width % self.BLOCK_SIZE != 0:
@@ -717,14 +746,16 @@ class decoder:
             Cb_zz_img = np.reshape(Cb_zz_img, (total_blocks, self.BLOCK_SIZE * self.BLOCK_SIZE))
             Cr_zz_img = np.reshape(Cr_zz_img, (total_blocks, self.BLOCK_SIZE * self.BLOCK_SIZE))
 
-            msg_path = self.retrievePath(key)
+            hash_path = self.retrievePath(key)
             rs_obj = rs(self.RS_PARAM)
             
             if func == 0:
+                msg_path = self.formatPathF5(hash_path)
                 message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
             elif func == 1:
                 message = self.extractsdcsF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
             elif func == 2:
+                msg_path = self.formatPathDMCSS(hash_path)
                 message = self.extractdmcss(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
             else:
                 raise ValueError('Algorithm must be:\n0: F5\n1: SDCS F5\n2: drF5')

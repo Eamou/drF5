@@ -695,7 +695,6 @@ class encoder:
         i, j, row_i, block_i = 0, 1, 0, 0
         rand_channel = 0
         num_coefs = (self.BLOCK_SIZE*self.BLOCK_SIZE)*self.hor_block_count*self.ver_block_count
-        # c1 = [row][block][coef]
         while i<len(msg):
             while j*block_i*row_i<num_coefs:
                 if j == 64:
@@ -713,17 +712,32 @@ class encoder:
                     #print(f"host:{host} lsb:{lsbF5(host)} bit: {msg_bit}")
                     if self.lsbF5(host) == msg_bit:
                         #print(msg_bit, i, "MATCH:", host)
-                        path.append([rand_channel, (row_i, block_i, j)])
+                        path.append(np.array([rand_channel, row_i, block_i, j]))
                         i+=1
                     else:
                         #print(msg_bit, i, ": NO MATCH:", host, "->", host, "-", math.copysign(1,host))
                         host = host - math.copysign(1, host)
                         if host != 0:
                             c1[row_i][block_i][j] = host
-                            path.append([rand_channel, (row_i, block_i, j)])
+                            path.append(np.array([rand_channel, row_i, block_i, j]))
                             i+=1
                 j+=1
+        path = self.formatPath(np.array(path))
         return path, c1, c2, c3
+
+    def formatPath(self, path):
+        path = path+1 # so we can use 00 as an end-of-block marker
+        row_format = len(str(self.ver_block_count))
+        block_format = len(str(self.hor_block_count))
+        if row_format % 2 != 0:
+            row_format += 1
+        if block_format % 2 != 0:
+            block_format += 1
+        path_string = ''
+        for bit_loc in path:
+            path_string += str(bit_loc[0]).zfill(2) + str(bit_loc[1]).zfill(row_format) + str(bit_loc[2]).zfill(block_format) \
+                + str(bit_loc[3]).zfill(2) + '00'
+        return path_string
 
     def hashPath(self, path):
         byte_path = str.encode(path)
@@ -738,7 +752,7 @@ class encoder:
 
         return 0
 
-    def encode(self, img_name, message, func=2, verbose=True):
+    def encode(self, img_name, message, func=2, verbose=True, use_rs=True):
         img = self.__readImage(img_name)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2YCR_CB)
         self.img_height, self.img_width = self.getImageDimensions(img)
@@ -775,11 +789,12 @@ class encoder:
         print("finished zigzag")
 
         print("encoding message...")
-        rs_obj = rs(self.RS_PARAM)
         bin_msg = self.messageConv(message)
-        message_poly = rs_obj.prepareMessage(bin_msg)
-        bin_poly = [format(num, '08b') for num in np.array(message_poly, dtype=np.uint8)]
-        bin_msg = ''.join([bit for bit in bin_poly])
+        if use_rs:
+            rs_obj = rs(self.RS_PARAM)
+            message_poly = rs_obj.prepareMessage(bin_msg)
+            bin_poly = [format(num, '08b') for num in np.array(message_poly, dtype=np.uint8)]
+            bin_msg = ''.join([bit for bit in bin_poly])
         if func == 0:
             hash_path, Y_zz_img, Cb_zz_img, Cr_zz_img = self.F5(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
 
@@ -810,7 +825,7 @@ class encoder:
             from decoder import decoder
             decoder_obj = decoder(self.BLOCK_SIZE, self.RS_PARAM)
             decoder_obj.defineBlockCount(self.ver_block_count, self.hor_block_count)
-            Y_zz_img, Cb_zz_img, Cr_zz_img = Y_zz_img.reshape((total_blocks, 64)), Cb_zz_img.reshape((total_blocks, 64)), Cr_zz_img.reshape((total_blocks, 64))
+            Y_zz_img, Cb_zz_img, Cr_zz_img = Y_zz_img.reshape((total_blocks, self.BLOCK_SIZE*self.BLOCK_SIZE)), Cb_zz_img.reshape((total_blocks, self.BLOCK_SIZE*self.BLOCK_SIZE)), Cr_zz_img.reshape((total_blocks, self.BLOCK_SIZE*self.BLOCK_SIZE))
             Y_img_tiles, Cb_img_tiles, Cr_img_tiles = decoder_obj.unZigZag(Y_zz_img), decoder_obj.unZigZag(Cb_zz_img), decoder_obj.unZigZag(Cr_zz_img)
             Y_dct_img, Cb_dct_img, Cr_dct_img = decoder_obj.deQuantize(Y_img_tiles, True), decoder_obj.deQuantize(Cb_img_tiles, False), decoder_obj.deQuantize(Cr_img_tiles, False)
             Y_img, Cb_img, Cr_img = decoder_obj.DCT_3(Y_dct_img), decoder_obj.DCT_3(Cb_dct_img), decoder_obj.DCT_3(Cr_dct_img)
@@ -830,13 +845,13 @@ class encoder:
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
-# FUCKING NEGATIVE NUMBERS OVERFLOWING!!!!
+
 #encoder_obj = encoder(8, 256)
-#encoder_obj.encode("fagen.png", "reed solomon", 2, verbose=False)
+#encoder_obj.encode("fagen.png", "reed solomon", 0, verbose=True, use_rs=False)
 
 from decoder import decoder
 decoder_obj = decoder(8, 256)
-decoder_obj.decode('stego_cv.jpg', b'Sixteen byte key', func=2, verbose=False)
+decoder_obj.decode('stego_cv.jpg', b'Sixteen byte key', func=0, verbose=True, use_rs=False)
 
 #img = cv2.imread("images/fagen.png", cv2.IMREAD_COLOR)
 #jpeg_bytes = simplejpeg.encode_jpeg(img, 100, 'BGR', '444', False)
