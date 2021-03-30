@@ -518,7 +518,7 @@ class decoder:
             bit_msg += b_bit
         return bit_msg
 
-    def extractF5(self, msg_path, img):
+    def extractF5(self, msg_path, img, LSB):
         bit_msg = ""
         for bit_loc in msg_path:
             channel = bit_loc[0]
@@ -527,8 +527,11 @@ class decoder:
             coef_i = bit_loc[3]
             block = (row_i * self.hor_block_count) + block_i
             coef = img[channel][block][coef_i]
-            bit_msg += str(int(self.lsbF5(coef)))
-        return bit_msg
+            if not LSB:
+                bit_msg += str(int(self.lsbF5(coef)))
+            else:
+                bit_msg += str(int(coef%2))
+        return bit_msg 
 
     def extractRSPoly(self, bit_msg):
         char, message = '', list()
@@ -646,13 +649,16 @@ class decoder:
 
             if func == 0:
                 msg_path = self.formatPathF5(hash_path)
-                message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
+                message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img], False)
             elif func == 1:
                 msg_path = self.formatPath(hash_path, mode=1)
                 message = self.extractsdcsF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
             elif func == 2:
                 msg_path = self.formatPath(hash_path, mode=0)
                 message = self.extractdmcss(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
+            elif func == 3:
+                msg_path = self.formatPathF5(hash_path)
+                message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img], True)
             if use_rs:
                 rs_obj = rs(self.RS_PARAM)
                 poly = self.extractRSPoly(message)
@@ -742,14 +748,16 @@ class decoder:
 
             if func == 0:
                 msg_path = self.formatPathF5(hash_path)
-                message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
+                message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img], False)
             elif func == 1:
                 msg_path = self.formatPath(hash_path, mode=1)
                 message = self.extractsdcsF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
             elif func == 2:
                 msg_path = self.formatPath(hash_path, mode=0)
                 message = self.extractdmcss(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
-
+            elif func == 3:
+                msg_path = self.formatPathF5(hash_path)
+                message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img], True)
             if use_rs:
                 rs_obj = rs(self.RS_PARAM)
                 poly = self.extractRSPoly(message)

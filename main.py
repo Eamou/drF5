@@ -17,7 +17,7 @@ parser.add_argument('--key', '-k', type=str, default=None, required='-extract' i
 parser.add_argument('--output', '-o', type=str, default='stego', help='What the output image/message file will be called. Default: stego.jpg/.txt')
 parser.add_argument('--rs', action='store_true', default=False, help='Enable Reed-Solomon encoding of message for more robust communication. NOTE: This must be used on extraction if it was used in embedding!')
 parser.add_argument('--verbose', '-v', action='store_true', default=False, help='When enabled, program will produce text file of bitstring rather than a JPG and perform every step of the encoding/decoding process manually')
-parser.add_argument('--function', '-f', type=int, choices=[0,1,2], default=0, help='The algorithm used for embedding. 0: F5 1: F5 w/ SDCS 2: F5 w/ DMCSS')
+parser.add_argument('--function', '-f', type=int, choices=[0,1,2,3], default=0, help='The algorithm used for embedding. 0: F5 1: F5 w/ SDCS 2: F5 w/ DMCSS')
 
 args = parser.parse_args()
 

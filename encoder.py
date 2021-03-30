@@ -5,7 +5,7 @@ import pickle
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 import simplejpeg
-from random import randrange
+from random import randrange, choice
 
 from sdcs import sdcs
 from stc import stc
@@ -735,6 +735,29 @@ class encoder:
         path = self.formatPath(np.array(path))
         return path, c1, c2, c3
 
+    def LSB(self, msg, c1, c2, c3):
+        path, history = list(), list()
+        channels = [c1,c2,c3]
+        # choosing to store in the last 10 ac coefficients to reduce artefacts
+        START_COEF = 1
+        END_COEF = 64
+        valid_indices = range(START_COEF,END_COEF)
+        for bit in msg:
+            valid_index = False
+            while not valid_index:
+                channel_i = randrange(3)
+                channel = channels[channel_i]
+                row_i, block_i = randrange(self.hor_block_count), randrange(self.ver_block_count)
+                coef_i = choice(valid_indices)
+                if str(channel_i) + str(row_i) + str(block_i) + str(coef_i) not in history:
+                    chosen_coef = int(channel[row_i][block_i][coef_i])
+                    if str(chosen_coef % 2) != bit:
+                        channel[row_i][block_i][coef_i] += 1
+                    path.append(np.array([channel_i, row_i, block_i, coef_i]))
+                    valid_index = True
+        path = self.formatPath(np.array(path))
+        return path, c1, c2, c3
+
     def formatPath(self, path):
         path = path+1 # so we can use 00 as an end-of-block marker
         row_format = len(str(self.ver_block_count))
@@ -813,6 +836,10 @@ class encoder:
 
         elif func == 2:
             hash_path, Y_zz_img, Cb_zz_img, Cr_zz_img = self.dmcss(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
+        
+        elif func == 3:
+            hash_path, Y_zz_img, Cb_zz_img, Cr_zz_img = self.LSB(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
+        
         else:
             raise ValueError('Algorithm must be:\n0: F5\n1: SDCS F5\n2: drF5')
         self.hashPath(hash_path)
@@ -856,12 +883,13 @@ class encoder:
 ########PROGRAM BEGINS HERE#############
 ########################################
 
-#encoder_obj = encoder(8, 256)encoder_obj.encode("images/fagen.png", "reed solomon test2", func=2, verbose=False, use_rs=True)
+#encoder_obj = encoder(8, 256)
+#encoder_obj.encode("images/fagen.png", "reed solomon test 4", func=1, verbose=False, use_rs=True)
 
-key = 'Sixteen byte key'
-from decoder import decoder
-decoder_obj = decoder(8, 256)
-decoder_obj.decode('stego', bytes(key, "utf8"), func=2, verbose=False, use_rs=True)
+#key = 'Sixteen byte key'
+#from decoder import decoder
+#decoder_obj = decoder(8, 256)
+#decoder_obj.decode('stego', bytes(key, "utf8"), func=1, verbose=False, use_rs=True)
 
 #img = cv2.imread("images/fagen.png", cv2.IMREAD_COLOR)
 #jpeg_bytes = simplejpeg.encode_jpeg(img, 100, 'BGR', '444', False)
