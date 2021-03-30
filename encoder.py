@@ -5,6 +5,7 @@ import pickle
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 import simplejpeg
+from random import randrange
 
 from sdcs import sdcs
 from stc import stc
@@ -507,37 +508,41 @@ class encoder:
             b_arr.append(int(bits,2))
         # what to do with left-over vals if it doesnt divide equally into n coefs?
         # begin embedding
-        path = list()
-        channel = c1 #replace with random in future but who cares rn
-        channel_i, row_i, block_i, b_i = 0, 0, 0, 0
-        for row_i in range(self.ver_block_count):
-            for block_i in range(self.hor_block_count):
-                suitable_coefs_boolmask = np.array([0<coef<(m-1) for coef in channel[row_i][block_i]]) # true or false based on value
-                suitable_coefs_boolmask[0] = False # avoid DC values
-                suitable_coefs = np.extract(suitable_coefs_boolmask, channel[row_i][block_i]) # filter array by value
-                suitable_coefs_index = np.where(suitable_coefs_boolmask==True)[0] # get indexes of those filtered
-                if len(suitable_coefs) < n: # if there arent enough suitable coefficients
+        path, history = list(), list()
+        channels = [c1,c2,c3]
+        b_i = 0
+        while True:
+            channel_i = randrange(3)
+            channel = channels[channel_i]
+            row_i = randrange(self.ver_block_count)
+            block_i = randrange(self.hor_block_count)
+            if str(channel_i) + str(row_i) + str(block_i) in history:
+                continue
+            history.append(str(channel_i) + str(row_i) + str(block_i))
+            suitable_coefs_boolmask = np.array([0<coef<(m-1) for coef in channel[row_i][block_i]]) # true or false based on value
+            suitable_coefs_boolmask[0] = False # avoid DC values
+            suitable_coefs = np.extract(suitable_coefs_boolmask, channel[row_i][block_i]) # filter array by value
+            suitable_coefs_index = np.where(suitable_coefs_boolmask==True)[0] # get indexes of those filtered
+            if len(suitable_coefs) < n: # if there arent enough suitable coefficients
+                continue
+            for j in range(0, len(suitable_coefs), n):
+                coefs_i = suitable_coefs_index[j:j+n]
+                coefs = suitable_coefs[j:j+n] # what we have,
+                if len(coefs) < n:
                     continue
-                for j in range(0, len(suitable_coefs), n):
-                    coefs_i = suitable_coefs_index[j:j+n]
-                    coefs = suitable_coefs[j:j+n] # what we have,
-                    if len(coefs) < n:
-                        continue
-                    b = b_arr[b_i] # what we want,
-                    delta = f5_sdcs.embed(coefs, b) # how we change what we have to get what we want
-                    block_path = list()
-                    for i, coef_index in enumerate(coefs_i): # make the changes:
-                        c1[row_i][block_i][coef_index] += delta[i]
-                        block_path.append(coef_index)
-                    if len(block_path) != 0:
-                        global_block = (row_i * self.hor_block_count) + block_i
-                        hash_path += ''.join(['0', str(channel_i), str(global_block).zfill(len(str(self.ver_block_count*self.hor_block_count)))] + [str(x).zfill(2) for x in block_path] + ['0','0'])
-                        path.append([channel_i, row_i, block_i, block_path])
-                        b_i += 1
-                        if b_i >= len(b_arr):
-                            print("path:", path)
-                            print("hash path:", hash_path)
-                            return hash_path, c1, c2, c3
+                b = b_arr[b_i] # what we want,
+                delta = f5_sdcs.embed(coefs, b) # how we change what we have to get what we want
+                block_path = list()
+                for i, coef_index in enumerate(coefs_i): # make the changes:
+                    channel[row_i][block_i][coef_index] += delta[i]
+                    block_path.append(coef_index)
+                if len(block_path) != 0:
+                    global_block = (row_i * self.hor_block_count) + block_i
+                    hash_path += ''.join(['0', str(channel_i), str(global_block).zfill(len(str(self.ver_block_count*self.hor_block_count)))] + [str(x).zfill(2) for x in block_path] + ['0','0'])
+                    path.append([channel_i, row_i, block_i, block_path])
+                    b_i += 1
+                    if b_i >= len(b_arr):
+                        return hash_path, c1, c2, c3
 
     def compress(self, block, qm, t):
         return np.rint(np.divide(cv2.dct(np.rint(cv2.idct(np.multiply(block, qm[t-1])))), qm[t]))
@@ -591,31 +596,32 @@ class encoder:
         return x
 
     def dmcss(self, msg, c1, c2, c3):
+        # prioritize smaller values? argsort
+        TAU = 3
         hash_path = ''
-        path = list()
-        row_i, block_i, global_block_i = 0, 0, 0
+        path, history = list(), list()
         msg_i = 0
-        channel, channel_i = c1, 0
+        channels = [c1,c2,c3]
         H_hat = np.array([71,109], dtype=np.uint8)
         stc_obj = stc(H_hat)
-        qcomp = self.genQFactor(60, self.Y_quant_table if channel_i == 0 else self.C_quant_table)
         map_sign = lambda x: 1 if math.copysign(1, x) == 1 else 0
         while msg_i < len(msg):
+            channel_i = randrange(3)
+            channel = channels[channel_i]
+            row_i = randrange(self.ver_block_count)
+            block_i = randrange(self.hor_block_count)
+            if str(channel_i) + str(row_i) + str(block_i) in history:
+                continue
+            history.append(str(channel_i) + str(row_i) + str(block_i))
+            qcomp = self.genQFactor(60, self.Y_quant_table if channel_i == 0 else self.C_quant_table)
             block = channel[row_i][block_i]
             # compress block
             comp_block = np.rint(np.divide(np.multiply(block.copy().reshape((self.BLOCK_SIZE,self.BLOCK_SIZE)), self.Y_quant_table if channel_i == 0 else self.C_quant_table), qcomp)).reshape((self.BLOCK_SIZE*self.BLOCK_SIZE))
-            coef_mask = np.array([abs(coef) > 0 for coef in comp_block])
+            coef_mask = np.array([0 < abs(coef) < TAU for coef in comp_block])
             coef_mask[0] = False # ignore dc coef
             coefs = np.extract(coef_mask, block)
             if len(coefs) < 8:
-                block_i += 1
-                global_block_i += 1
-                if block_i >= self.hor_block_count:
-                    row_i += 1
-                    block_i = 0
                 continue
-            #print(block, row_i, block_i, global_block_i)
-            #exit(0)
             coefs_ind = np.where(coef_mask == True)[0]
             x = [map_sign(x) for x in coefs]
             if msg_i + len(x) // 2 < len(msg):
@@ -625,44 +631,42 @@ class encoder:
             m = np.array(list(m), dtype=np.uint8)
             msg_i += len(x) // 2
             y, _ = stc_obj.generate(x,m)
-            #print((stc_obj.gen_H(y, len(y)//2) @ y) % 2, m)
             block_path = list()
             final_coefs = list()
             for y_i, coef_i in enumerate(coefs_ind):
                 block[coef_i] *= (-1)**(map_sign(block[coef_i]) - y[y_i])
-                #block_path.append(coef_i) #row, coef
                 final_coefs.append(block[coef_i])
             diff_manc = self.diffMancEnc(final_coefs)+1
-            #print(final_coefs, diff_manc-1)
             block_path = [[x, diff_manc[i]] for i, x in enumerate(coefs_ind)]
             # format path properly
             path.append([channel_i, row_i, block_i, block_path])
             int_format = len(str(self.ver_block_count*self.hor_block_count))
             if int_format % 2 != 0: int_format += 1
-            hash_path += ''.join(['0', str(channel_i), str(global_block_i).zfill(len(str(self.ver_block_count*self.hor_block_count)))] + [str(x).zfill(2) + str(y).zfill(2) for x, y in block_path] + ['0','0'])
-            block_i += 1
-            global_block_i += 1
-            if block_i >= self.hor_block_count:
-                row_i += 1
-                block_i = 0
+            global_block = (row_i * self.hor_block_count) + block_i
+            hash_path += ''.join(['0', str(channel_i), str(global_block).zfill(len(str(self.ver_block_count*self.hor_block_count)))] + [str(x).zfill(2) + str(y).zfill(2) for x, y in block_path] + ['0','0'])
         return hash_path, c1, c2, c3
 
     def drF5(self, msg, c1 , c2 ,c3):
         hash_path = ''
-        path = list()
-        row_i, block_i, global_block_i = 0, 0, 0
+        path, history = list(), list()
         msg_i = 0
-        channel, channel_i = c1, 0
+        channels = [c1,c2,c3]
         H_hat = np.array([71,109], dtype=np.uint8)
         stc_obj = stc(H_hat)
         while msg_i < len(msg):
+            channel_i = randrange(3)
+            channel = channels[channel_i]
+            row_i = randrange(self.ver_block_count)
+            block_i = randrange(self.hor_block_count)
+            if str(channel_i) + str(row_i) + str(block_i) in history:
+                continue
+            history.append(str(channel_i) + str(row_i) + str(block_i))
             block = channel[row_i][block_i]
             coef_mask = np.array([abs(coef) > 0 for coef in block])
             coef_mask[0] = False # ignore dc coef
             coefs = np.extract(coef_mask, block)
             if len(coefs) < 8:
                 block_i += 1
-                global_block_i += 1
                 if block_i >= self.hor_block_count:
                     row_i += 1
                     block_i = 0
@@ -685,9 +689,9 @@ class encoder:
             path.append([channel_i, row_i, block_i, block_path])
             int_format = len(str(self.ver_block_count*self.hor_block_count))
             if int_format % 2 != 0: int_format += 1
-            hash_path += ''.join(['0', str(channel_i), str(global_block_i).zfill(len(str(self.ver_block_count*self.hor_block_count)))] + [str(x).zfill(2) for x in block_path] + ['0','0'])
+            global_block = (row_i * self.hor_block_count) + block_i
+            hash_path += ''.join(['0', str(channel_i), str(global_block).zfill(len(str(self.ver_block_count*self.hor_block_count)))] + [str(x).zfill(2) for x in block_path] + ['0','0'])
             block_i += 1
-            global_block_i += 1
             if block_i >= self.hor_block_count:
                 row_i += 1
                 block_i = 0
@@ -695,18 +699,20 @@ class encoder:
 
     def F5(self, msg, c1, c2, c3):
         # c1, c2, c3 = y,cb,cr
-        path = list()
-        i, j, row_i, block_i = 0, 1, 0, 0
+        path, history = list(), list()
+        i, j = 0, 1
         rand_channel = 0
-        num_coefs = (self.BLOCK_SIZE*self.BLOCK_SIZE)*self.hor_block_count*self.ver_block_count
+        # random permutation of row indices
+        # generate a new permutation of blocks for each row change
         while i<len(msg):
-            while j*block_i*row_i<num_coefs:
-                if j == 64:
-                    block_i += 1
-                    j = 1
-                if block_i == self.hor_block_count:
-                    block_i = 0
-                    row_i += 1
+            # dont do what we've already done!
+            row_i = randrange(self.ver_block_count)
+            block_i = randrange(self.hor_block_count)
+            if str(row_i) + str(block_i) in history:
+                continue
+            history.append(str(row_i) + str(block_i))
+            j = 1
+            while j < 64:
                 host = c1[row_i][block_i][j]
                 if host != 0.:
                     try:
@@ -850,13 +856,12 @@ class encoder:
 ########PROGRAM BEGINS HERE#############
 ########################################
 
-#encoder_obj = encoder(8, 256)
-#encoder_obj.encode("images/fagen.png", "reed solomon test", func=1, verbose=False, use_rs=True)
+#encoder_obj = encoder(8, 256)encoder_obj.encode("images/fagen.png", "reed solomon test2", func=2, verbose=False, use_rs=True)
 
 key = 'Sixteen byte key'
 from decoder import decoder
 decoder_obj = decoder(8, 256)
-decoder_obj.decode('stego', bytes(key, "utf8"), func=1, verbose=False, use_rs=True)
+decoder_obj.decode('stego', bytes(key, "utf8"), func=2, verbose=False, use_rs=True)
 
 #img = cv2.imread("images/fagen.png", cv2.IMREAD_COLOR)
 #jpeg_bytes = simplejpeg.encode_jpeg(img, 100, 'BGR', '444', False)

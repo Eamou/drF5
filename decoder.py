@@ -503,7 +503,6 @@ class decoder:
     def extractsdcsF5(self, msg_path, img):
         n,k,m,a = 3,2,17,[1,2,6]
         f5_sdcs = sdcs((n,k,m), a)
-        #channel = img[0] #2500 blocks in a single row, no actual rows
         bit_msg = ''
         for bloc in msg_path:
             # channel, global block, coefs
