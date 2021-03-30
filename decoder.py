@@ -503,15 +503,15 @@ class decoder:
     def extractsdcsF5(self, msg_path, img):
         n,k,m,a = 3,2,17,[1,2,6]
         f5_sdcs = sdcs((n,k,m), a)
-        channel = img[0] #2500 blocks in a single row, no actual rows
+        #channel = img[0] #2500 blocks in a single row, no actual rows
         bit_msg = ''
         for bloc in msg_path:
-            # row, block, coef
+            # channel, global block, coefs
+            channel_i, row_i, block_i, coefs = bloc
+            block = (row_i * self.hor_block_count) + block_i%self.hor_block_count
             sdcs_block = list()
-            for location in bloc:
-                row_i, block_i, coef_i = location
-                block = (row_i * self.hor_block_count) + block_i
-                sdcs_block.append(img[0][block][coef_i])
+            for coef in coefs:
+                sdcs_block.append(img[channel_i][block][coef])
             b = int(f5_sdcs.extract(sdcs_block))
             b_bit = bin(b)[2:]
             while len(b_bit) < math.floor(math.log(m, 2)):
@@ -589,7 +589,7 @@ class decoder:
             partition = list()
         return new_path
 
-    def formatPathDMCSS(self, path):  
+    def formatPath(self, path, mode):  
         new_path = list()
         split_path = np.split(path, len(path)//2)
         split_path = [''.join([str(x) for x in a]) for a in split_path]
@@ -609,8 +609,12 @@ class decoder:
 
             block_path = list()
             while split_path[i] != '00':
-                block_path.append([int(split_path[i]), int(split_path[i+1])-1]) #minus one for diff code
-                i += 2
+                if mode == 0:
+                    block_path.append([int(split_path[i]), int(split_path[i+1])-1]) #minus one for diff code
+                    i += 2
+                elif mode == 1:
+                    block_path.append(int(split_path[i]))
+                    i += 1
             i += 1
             partition.append(block_path)
             new_path.append(partition)
@@ -645,9 +649,10 @@ class decoder:
                 msg_path = self.formatPathF5(hash_path)
                 message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
             elif func == 1:
+                msg_path = self.formatPath(hash_path, mode=1)
                 message = self.extractsdcsF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
             elif func == 2:
-                msg_path = self.formatPathDMCSS(hash_path)
+                msg_path = self.formatPath(hash_path, mode=0)
                 message = self.extractdmcss(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
             if use_rs:
                 rs_obj = rs(self.RS_PARAM)
@@ -735,20 +740,20 @@ class decoder:
             Cr_zz_img = np.reshape(Cr_zz_img, (total_blocks, self.BLOCK_SIZE * self.BLOCK_SIZE))
 
             hash_path = self.retrievePath(key)
-            
+
             if func == 0:
                 msg_path = self.formatPathF5(hash_path)
                 message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
             elif func == 1:
+                msg_path = self.formatPath(hash_path, mode=1)
                 message = self.extractsdcsF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
             elif func == 2:
-                msg_path = self.formatPathDMCSS(hash_path)
+                msg_path = self.formatPath(hash_path, mode=0)
                 message = self.extractdmcss(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
 
             if use_rs:
                 rs_obj = rs(self.RS_PARAM)
                 poly = self.extractRSPoly(message)
-                print(poly)
                 corrected_message = rs_obj.detectErrors(poly)
                 message = ''.join([chr(x) for x in corrected_message[:len(corrected_message)-16]])
             else:

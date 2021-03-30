@@ -495,6 +495,7 @@ class encoder:
             return int(x % 2)
 
     def sdcsF5(self, msg, c1, c2, c3):
+        hash_path = ''
         # set up sdcs
         n, k, m, a = 3, 2, 17, [1,2,6]
         f5_sdcs = sdcs((n,k,m), a)
@@ -508,10 +509,9 @@ class encoder:
         # begin embedding
         path = list()
         channel = c1 #replace with random in future but who cares rn
-        row_i, block_i, b_i = 0, 0, 0
+        channel_i, row_i, block_i, b_i = 0, 0, 0, 0
         for row_i in range(self.ver_block_count):
             for block_i in range(self.hor_block_count):
-                # how to stop embedding in dc?
                 suitable_coefs_boolmask = np.array([0<coef<(m-1) for coef in channel[row_i][block_i]]) # true or false based on value
                 suitable_coefs_boolmask[0] = False # avoid DC values
                 suitable_coefs = np.extract(suitable_coefs_boolmask, channel[row_i][block_i]) # filter array by value
@@ -528,12 +528,16 @@ class encoder:
                     block_path = list()
                     for i, coef_index in enumerate(coefs_i): # make the changes:
                         c1[row_i][block_i][coef_index] += delta[i]
-                        block_path.append([row_i, block_i, coef_index])
+                        block_path.append(coef_index)
                     if len(block_path) != 0:
-                        path.append(block_path)
+                        global_block = (row_i * self.hor_block_count) + block_i
+                        hash_path += ''.join(['0', str(channel_i), str(global_block).zfill(len(str(self.ver_block_count*self.hor_block_count)))] + [str(x).zfill(2) for x in block_path] + ['0','0'])
+                        path.append([channel_i, row_i, block_i, block_path])
                         b_i += 1
                         if b_i >= len(b_arr):
-                            return path, c1, c2, c3
+                            print("path:", path)
+                            print("hash path:", hash_path)
+                            return hash_path, c1, c2, c3
 
     def compress(self, block, qm, t):
         return np.rint(np.divide(cv2.dct(np.rint(cv2.idct(np.multiply(block, qm[t-1])))), qm[t]))
@@ -793,7 +797,6 @@ class encoder:
         if use_rs:
             rs_obj = rs(self.RS_PARAM)
             message_poly = rs_obj.prepareMessage(bin_msg)
-            print(message_poly)
             bin_poly = [format(num, '08b') for num in np.array(message_poly, dtype=np.uint8)]
             bin_msg = ''.join([bit for bit in bin_poly])
         if func == 0:
@@ -848,13 +851,12 @@ class encoder:
 ########################################
 
 #encoder_obj = encoder(8, 256)
-#encoder_obj.encode("images/fagen.png", "reed solomon test", func=2, verbose=False, use_rs=True)
+#encoder_obj.encode("images/fagen.png", "reed solomon test", func=1, verbose=False, use_rs=True)
 
-#key = 'Sixteen byte key'
-
-#from decoder import decoder
-#decoder_obj = decoder(8, 256)
-#decoder_obj.decode('stego', bytes(key, "utf8"), func=2, verbose=False, use_rs=True)
+key = 'Sixteen byte key'
+from decoder import decoder
+decoder_obj = decoder(8, 256)
+decoder_obj.decode('stego', bytes(key, "utf8"), func=1, verbose=False, use_rs=True)
 
 #img = cv2.imread("images/fagen.png", cv2.IMREAD_COLOR)
 #jpeg_bytes = simplejpeg.encode_jpeg(img, 100, 'BGR', '444', False)
