@@ -321,7 +321,10 @@ class rs:
                     loc_roots.append(alpha_j)
             if len(loc_roots) != len(loc_poly)-1:
                 # if the locaction polynomial has num of roots unequal to its degree, too many errors.
-                raise Exception('Codeword contains too many errors')
+                # raise Exception('Codeword contains too many errors')
+                cont = str(input('ERROR: Codeword contains too many errors to correct. Continue anyway? y/n: '))
+                if cont != 'y':
+                    exit(0)
             errors = self.findErrors(loc_poly, mag_poly)
             R_x = self.fixErrors(R_x, errors)
         return R_x
@@ -332,7 +335,14 @@ class rs:
         blocks, block_size = len(bitstring), 8
         message = [bitstring[i:i+block_size] for i in range(0, blocks, block_size)]
         message = [int(i, 2) for i in message]
-        return self.encodeMsg(message)
+        messages = [message[i:i+self.K] for i in range(0, len(message), self.K)]
+        return np.array([self.encodeMsg(message) for message in messages])
+
+#rs_obj = rs(256)
+#print(rs_obj.detectErrors(np.array([114., 101., 101., 100.,  32., 115., 111., 108., 111., 109., 111.,
+#       110.,  32., 116., 101., 115., 116.,  32.,  52., 171., 238., 229.,
+#       206., 113.,  68., 207.,  42.,  73., 122., 207.,  87., 248.,  54.,
+#        14., 178.])))
 
 """
 to do:
