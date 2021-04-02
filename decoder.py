@@ -476,7 +476,10 @@ class decoder:
             #exit(0)
             for coef_i, manc_i in block_path:
                 diff_manc.append(manc_i)
-                y.append(img[channel_i][block][coef_i])
+                try:
+                    y.append(img[channel_i][block][coef_i])
+                except:
+                    y.append(0)
             # now have lossy dct coefs + differentia manchester
             y = self.fixMancErrors(y, diff_manc)
             y = np.array([map_sign(x) for x in y])
@@ -494,7 +497,10 @@ class decoder:
             block = (row_i * self.hor_block_count) + block_i
             y = list()
             for coef_i in block_path:
-                y.append(img[channel_i][block][coef_i] % 2)
+                try:
+                    y.append(img[channel_i][block][coef_i] % 2)
+                except:
+                    y.append(0)
             H = stc_obj.gen_H(y, len(y)//2)
             m = np.array((H @ y) % 2, dtype=np.uint8)
             bit_msg += ''.join([str(bit) for bit in m])
@@ -510,7 +516,10 @@ class decoder:
             block = (row_i * self.hor_block_count) + block_i%self.hor_block_count
             sdcs_block = list()
             for coef in coefs:
-                sdcs_block.append(img[channel_i][block][coef])
+                try:
+                    sdcs_block.append(img[channel_i][block][coef])
+                except:
+                    sdcs_block.append(0)
             b = int(f5_sdcs.extract(sdcs_block))
             b_bit = bin(b)[2:]
             while len(b_bit) < math.floor(math.log(m, 2)):
@@ -526,7 +535,10 @@ class decoder:
             block_i = bit_loc[2]
             coef_i = bit_loc[3]
             block = (row_i * self.hor_block_count) + block_i
-            coef = img[channel][block][coef_i]
+            try:
+                coef = img[channel][block][coef_i]
+            except:
+                coef = 0
             if not LSB:
                 bit_msg += str(int(self.lsbF5(coef)))
             else:
@@ -661,10 +673,13 @@ class decoder:
                 message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img], True)
             if use_rs:
                 rs_obj = rs(self.RS_PARAM)
-                poly = self.extractRSPoly(message)
-                corrected_message = rs_obj.detectErrors(poly)
-                final_message = ''.join([chr(x) for x in corrected_message[:len(corrected_message)-16]])
-                print("extracted message:", final_message)
+                polys = self.extractRSPoly(message)
+                polys = [polys[i:i+rs_obj.N] for i in range(0, len(polys), rs_obj.N)]
+                message = ''
+                for poly in polys:
+                    corrected_message = rs_obj.detectErrors(poly)
+                    message += ''.join([chr(x) for x in corrected_message[:len(corrected_message)-(rs_obj.T*2)]])
+                print("extracted message:", message)
 
             else:
                 message = self.extractMsgTxt(message)
@@ -760,9 +775,12 @@ class decoder:
                 message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img], True)
             if use_rs:
                 rs_obj = rs(self.RS_PARAM)
-                poly = self.extractRSPoly(message)
-                corrected_message = rs_obj.detectErrors(poly)
-                message = ''.join([chr(x) for x in corrected_message[:len(corrected_message)-16]])
+                polys = self.extractRSPoly(message)
+                polys = [polys[i:i+rs_obj.N] for i in range(0, len(polys), rs_obj.N)]
+                message = ''
+                for poly in polys:
+                    corrected_message = rs_obj.detectErrors(poly)
+                    message += ''.join([chr(x) for x in corrected_message[:len(corrected_message)-(rs_obj.T*2)]])
             else:
                 message = self.extractMsgTxt(message)
                 print("non-rs extracted message:", message)

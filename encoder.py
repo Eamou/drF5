@@ -6,6 +6,7 @@ from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 import simplejpeg
 from random import randrange, choice
+from timeit import default_timer as timer
 
 from sdcs import sdcs
 from stc import stc
@@ -31,6 +32,7 @@ from rs import rs
 
 class encoder:
     def __init__(self, block_size, rs_param):
+        self.TIME_LIMIT = 10
         self.BLOCK_SIZE = block_size
         self.RS_PARAM = rs_param
         self.img_width, self.img_height = None, None
@@ -508,17 +510,15 @@ class encoder:
             b_arr.append(int(bits,2))
         # what to do with left-over vals if it doesnt divide equally into n coefs?
         # begin embedding
-        path, history = list(), list()
+        path = list()
         channels = [c1,c2,c3]
         b_i = 0
-        while True:
-            channel_i = randrange(3)
+        block_perms = np.arange(3 * self.ver_block_count * self.hor_block_count)
+        for block_num in block_perms:
+            channel_i = block_num // (self.ver_block_count * self.hor_block_count)
+            row_i = (block_num % (self.ver_block_count * self.hor_block_count)) // self.hor_block_count
+            block_i = (block_num % (self.ver_block_count * self.hor_block_count)) % self.hor_block_count
             channel = channels[channel_i]
-            row_i = randrange(self.ver_block_count)
-            block_i = randrange(self.hor_block_count)
-            if str(channel_i) + str(row_i) + str(block_i) in history:
-                continue
-            history.append(str(channel_i) + str(row_i) + str(block_i))
             suitable_coefs_boolmask = np.array([0<coef<(m-1) for coef in channel[row_i][block_i]]) # true or false based on value
             suitable_coefs_boolmask[0] = False # avoid DC values
             suitable_coefs = np.extract(suitable_coefs_boolmask, channel[row_i][block_i]) # filter array by value
@@ -543,6 +543,7 @@ class encoder:
                     b_i += 1
                     if b_i >= len(b_arr):
                         return hash_path, c1, c2, c3
+        raise Exception('Message is too long!')
 
     def compress(self, block, qm, t):
         return np.rint(np.divide(cv2.dct(np.rint(cv2.idct(np.multiply(block, qm[t-1])))), qm[t]))
@@ -596,23 +597,25 @@ class encoder:
         return x
 
     def dmcss(self, msg, c1, c2, c3):
-        # prioritize smaller values? argsort
+        # rather than doing random gen, generate a permutation
+        # makes checking max length exceeded easier too!
+        # array n perms of block range, n num of rows
         TAU = 3
-        hash_path = ''
-        path, history = list(), list()
         msg_i = 0
+        hash_path = ''
+        path = list()
         channels = [c1,c2,c3]
         H_hat = np.array([71,109], dtype=np.uint8)
         stc_obj = stc(H_hat)
         map_sign = lambda x: 1 if math.copysign(1, x) == 1 else 0
-        while msg_i < len(msg):
-            channel_i = randrange(3)
+        block_perms = np.random.permutation(np.arange(3 * self.ver_block_count * self.hor_block_count))
+        for block_num in block_perms:
+            if msg_i >= len(msg):
+                return hash_path, c1, c2, c3
+            channel_i = block_num // (self.ver_block_count * self.hor_block_count)
+            row_i = (block_num % (self.ver_block_count * self.hor_block_count)) // self.hor_block_count
+            block_i = (block_num % (self.ver_block_count * self.hor_block_count)) % self.hor_block_count
             channel = channels[channel_i]
-            row_i = randrange(self.ver_block_count)
-            block_i = randrange(self.hor_block_count)
-            if str(channel_i) + str(row_i) + str(block_i) in history:
-                continue
-            history.append(str(channel_i) + str(row_i) + str(block_i))
             qcomp = self.genQFactor(60, self.Y_quant_table if channel_i == 0 else self.C_quant_table)
             block = channel[row_i][block_i]
             # compress block
@@ -644,32 +647,28 @@ class encoder:
             if int_format % 2 != 0: int_format += 1
             global_block = (row_i * self.hor_block_count) + block_i
             hash_path += ''.join(['0', str(channel_i), str(global_block).zfill(len(str(self.ver_block_count*self.hor_block_count)))] + [str(x).zfill(2) + str(y).zfill(2) for x, y in block_path] + ['0','0'])
-        return hash_path, c1, c2, c3
+        raise Exception('Message too long!')
 
     def drF5(self, msg, c1 , c2 ,c3):
         hash_path = ''
-        path, history = list(), list()
+        path = list()
         msg_i = 0
         channels = [c1,c2,c3]
+        block_perms = np.random.permutation(np.arange(3 * self.ver_block_count * self.hor_block_count))
         H_hat = np.array([71,109], dtype=np.uint8)
         stc_obj = stc(H_hat)
-        while msg_i < len(msg):
-            channel_i = randrange(3)
+        for block_num in block_perms:
+            if msg_i >= len(msg):
+                return hash_path, c1, c2, c3
+            channel_i = block_num // (self.ver_block_count * self.hor_block_count)
+            row_i = (block_num % (self.ver_block_count * self.hor_block_count)) // self.hor_block_count
+            block_i = (block_num % (self.ver_block_count * self.hor_block_count)) % self.hor_block_count
             channel = channels[channel_i]
-            row_i = randrange(self.ver_block_count)
-            block_i = randrange(self.hor_block_count)
-            if str(channel_i) + str(row_i) + str(block_i) in history:
-                continue
-            history.append(str(channel_i) + str(row_i) + str(block_i))
             block = channel[row_i][block_i]
             coef_mask = np.array([abs(coef) > 0 for coef in block])
             coef_mask[0] = False # ignore dc coef
             coefs = np.extract(coef_mask, block)
             if len(coefs) < 8:
-                block_i += 1
-                if block_i >= self.hor_block_count:
-                    row_i += 1
-                    block_i = 0
                 continue
             coefs_ind = np.where(coef_mask == True)[0]
             x = [int(x%2) for x in coefs]
@@ -691,29 +690,27 @@ class encoder:
             if int_format % 2 != 0: int_format += 1
             global_block = (row_i * self.hor_block_count) + block_i
             hash_path += ''.join(['0', str(channel_i), str(global_block).zfill(len(str(self.ver_block_count*self.hor_block_count)))] + [str(x).zfill(2) for x in block_path] + ['0','0'])
-            block_i += 1
-            if block_i >= self.hor_block_count:
-                row_i += 1
-                block_i = 0
-        return hash_path, c1, c2, c3
+        raise Exception('Message too long!')
 
     def F5(self, msg, c1, c2, c3):
         # c1, c2, c3 = y,cb,cr
-        path, history = list(), list()
+        path = list()
         i, j = 0, 1
-        rand_channel = 0
+        channels = [c1,c2,c3]
         # random permutation of row indices
         # generate a new permutation of blocks for each row change
-        while i<len(msg):
-            # dont do what we've already done!
-            row_i = randrange(self.ver_block_count)
-            block_i = randrange(self.hor_block_count)
-            if str(row_i) + str(block_i) in history:
-                continue
-            history.append(str(row_i) + str(block_i))
+        block_perms = np.random.permutation(np.arange(3 * self.ver_block_count * self.hor_block_count))
+        for block_num in block_perms:
+            if i >= len(msg):
+                path = self.formatPath(np.array(path))
+                return path, c1, c2, c3
+            channel_i = block_num // (self.ver_block_count * self.hor_block_count)
+            row_i = (block_num % (self.ver_block_count * self.hor_block_count)) // self.hor_block_count
+            block_i = (block_num % (self.ver_block_count * self.hor_block_count)) % self.hor_block_count
+            channel = channels[channel_i]
             j = 1
             while j < 64:
-                host = c1[row_i][block_i][j]
+                host = channel[row_i][block_i][j]
                 if host != 0.:
                     try:
                         msg_bit = int(msg[i])
@@ -722,41 +719,43 @@ class encoder:
                     #print(f"host:{host} lsb:{lsbF5(host)} bit: {msg_bit}")
                     if self.lsbF5(host) == msg_bit:
                         #print(msg_bit, i, "MATCH:", host)
-                        path.append(np.array([rand_channel, row_i, block_i, j]))
+                        path.append(np.array([channel_i, row_i, block_i, j]))
                         i+=1
                     else:
                         #print(msg_bit, i, ": NO MATCH:", host, "->", host, "-", math.copysign(1,host))
                         host = host - math.copysign(1, host)
                         if host != 0:
-                            c1[row_i][block_i][j] = host
-                            path.append(np.array([rand_channel, row_i, block_i, j]))
+                            channel[row_i][block_i][j] = host
+                            path.append(np.array([channel_i, row_i, block_i, j]))
                             i+=1
                 j+=1
-        path = self.formatPath(np.array(path))
-        return path, c1, c2, c3
+        raise Exception('Message too long!')
 
     def LSB(self, msg, c1, c2, c3):
-        path, history = list(), list()
+        msg_i = 0
+        path = list()
         channels = [c1,c2,c3]
         # choosing to store in the last 10 ac coefficients to reduce artefacts
         START_COEF = 1
-        END_COEF = 64
-        valid_indices = range(START_COEF,END_COEF)
-        for bit in msg:
-            valid_index = False
-            while not valid_index:
-                channel_i = randrange(3)
-                channel = channels[channel_i]
-                row_i, block_i = randrange(self.hor_block_count), randrange(self.ver_block_count)
-                coef_i = choice(valid_indices)
-                if str(channel_i) + str(row_i) + str(block_i) + str(coef_i) not in history:
-                    chosen_coef = int(channel[row_i][block_i][coef_i])
-                    if str(chosen_coef % 2) != bit:
-                        channel[row_i][block_i][coef_i] += 1
-                    path.append(np.array([channel_i, row_i, block_i, coef_i]))
-                    valid_index = True
-        path = self.formatPath(np.array(path))
-        return path, c1, c2, c3
+        END_COEF = 10
+        valid_indices = np.arange(START_COEF,END_COEF)
+        block_perms = np.arange(3 * self.ver_block_count * self.hor_block_count)
+        for block_num in block_perms:
+            channel_i = block_num // (self.ver_block_count * self.hor_block_count)
+            row_i = (block_num % (self.ver_block_count * self.hor_block_count)) // self.hor_block_count
+            block_i = (block_num % (self.ver_block_count * self.hor_block_count)) % self.hor_block_count
+            channel = channels[channel_i]
+            for coef_i in np.random.permutation(valid_indices):
+                if msg_i >= len(msg):
+                    path = self.formatPath(np.array(path))
+                    return path, c1, c2, c3
+                bit = msg[msg_i]
+                chosen_coef = int(channel[row_i][block_i][coef_i])
+                if str(chosen_coef % 2) != bit:
+                    channel[row_i][block_i][coef_i] += 1
+                path.append(np.array([channel_i, row_i, block_i, coef_i]))
+                msg_i += 1
+        raise Exception('Message is too long!')
 
     def formatPath(self, path):
         path = path+1 # so we can use 00 as an end-of-block marker
@@ -785,7 +784,7 @@ class encoder:
 
         return 0
 
-    def encode(self, img_name, message, func=2, verbose=True, use_rs=True, output_name="stego"):
+    def encode(self, img_name, message_path, func=2, verbose=True, use_rs=True, output_name="stego"):
         img = self.__readImage(img_name)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2YCR_CB)
         self.img_height, self.img_width = self.getImageDimensions(img)
@@ -822,12 +821,19 @@ class encoder:
         print("finished zigzag")
 
         print("encoding message...")
+        try:
+            with open(message_path, 'r') as f:
+                message = f.read()
+        except:
+            raise FileNotFoundError('Could not find message file, is the path correct?')
         bin_msg = self.messageConv(message)
         if use_rs:
             rs_obj = rs(self.RS_PARAM)
-            message_poly = rs_obj.prepareMessage(bin_msg)
-            bin_poly = [format(num, '08b') for num in np.array(message_poly, dtype=np.uint8)]
-            bin_msg = ''.join([bit for bit in bin_poly])
+            message_polys = rs_obj.prepareMessage(bin_msg)
+            bin_msg = ''
+            for message_poly in message_polys:
+                bin_poly = [format(num, '08b') for num in np.array(message_poly, dtype=np.uint8)]
+                bin_msg += ''.join([bit for bit in bin_poly])
         if func == 0:
             hash_path, Y_zz_img, Cb_zz_img, Cr_zz_img = self.F5(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
 
@@ -884,12 +890,12 @@ class encoder:
 ########################################
 
 #encoder_obj = encoder(8, 256)
-#encoder_obj.encode("images/fagen.png", "reed solomon test 4", func=1, verbose=False, use_rs=True)
+#encoder_obj.encode("images/fagen.png", "message.txt", func=3, verbose=False, use_rs=True)
 
 #key = 'Sixteen byte key'
 #from decoder import decoder
 #decoder_obj = decoder(8, 256)
-#decoder_obj.decode('stego', bytes(key, "utf8"), func=1, verbose=False, use_rs=True)
+#decoder_obj.decode('stego', bytes(key, "utf8"), func=3, verbose=False, use_rs=True)
 
 #img = cv2.imread("images/fagen.png", cv2.IMREAD_COLOR)
 #jpeg_bytes = simplejpeg.encode_jpeg(img, 100, 'BGR', '444', False)
