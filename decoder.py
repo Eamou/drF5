@@ -338,41 +338,53 @@ class decoder:
                 continue
         return Y_decoded_img, Cb_decoded_img, Cr_decoded_img
 
-    def unRLE(self, decoded_img):
-        zz_img = list()
-        for block in decoded_img:
-            zz_block = np.zeros(64)
-            zz_block[0] = block[0]
-            block_len = len(block)
-            ac_val_i = 0
-            for ac_arr_i in range(1, block_len):
-                ac_val_i += block[ac_arr_i][0] + 1
-                zz_block[ac_val_i] = block[ac_arr_i][1]
-            zz_img.append(zz_block)
-        return np.array(zz_img)
+    def unRLE(self, img):
+        final_img = list()
+        for channel in img:
+            zz_img = list()
+            for block in channel:
+                zz_block = np.zeros(64)
+                zz_block[0] = block[0]
+                block_len = len(block)
+                ac_val_i = 0
+                for ac_arr_i in range(1, block_len):
+                    ac_val_i += block[ac_arr_i][0] + 1
+                    zz_block[ac_val_i] = block[ac_arr_i][1]
+                zz_img.append(zz_block)
+            final_img.append(np.array(zz_img))
+        return np.array(final_img)
 
     def unDPCM(self, zz_img):
-        cur_dc_val = zz_img[0][0]
-        img_len = len(zz_img)
-        for dc_count in range(1, img_len):
-            cur_dc_val += zz_img[dc_count][0]
-            zz_img[dc_count][0] = cur_dc_val
-        return zz_img
+        final_img = list()
+        for channel in zz_img:
+            cur_dc_val = channel[0][0]
+            img_len = len(channel)
+            for dc_count in range(1, img_len):
+                cur_dc_val += channel[dc_count][0]
+                channel[dc_count][0] = cur_dc_val
+            final_img.append(channel)
+        return final_img
 
     def unZigZag(self, zz_img):
         id_block = np.reshape(np.arange(self.BLOCK_SIZE*self.BLOCK_SIZE), (self.BLOCK_SIZE, self.BLOCK_SIZE))
         indices = np.hstack([np.diagonal(id_block[::-1,:], k)[::(2*(k % 2)-1)] for k in range(1-id_block.shape[0], id_block.shape[0])])
-        img=list()
-        for zz_block in zz_img:
-            block = np.zeros(self.BLOCK_SIZE*self.BLOCK_SIZE)
-            for i, ind in enumerate(indices):
-                block[ind] = zz_block[i]
-            img.append(np.reshape(block, (self.BLOCK_SIZE,self.BLOCK_SIZE)))
-        return np.reshape(img, (self.hor_block_count,self.ver_block_count,self.BLOCK_SIZE,self.BLOCK_SIZE))
-        
-    def deQuantize(self, img, Y_flag):
-        table = self.Y_quant_table if Y_flag else self.C_quant_table
-        return np.array([np.multiply(block, table) for block in np.array([row for row in img])])
+        final_img = list()
+        for channel in zz_img:
+            img=list()
+            for zz_block in channel:
+                block = np.zeros(self.BLOCK_SIZE*self.BLOCK_SIZE)
+                for i, ind in enumerate(indices):
+                    block[ind] = zz_block[i]
+                img.append(np.reshape(block, (self.BLOCK_SIZE,self.BLOCK_SIZE)))
+            final_img.append(np.reshape(img, (self.hor_block_count,self.ver_block_count,self.BLOCK_SIZE,self.BLOCK_SIZE)))
+        return np.array(final_img)
+
+    def deQuantize(self, img):
+        final_img = list()
+        for i, channel in enumerate(img):
+            table = self.Y_quant_table if i == 0 else self.C_quant_table
+            final_img.append(np.array([np.multiply(block, table) for block in np.array([row for row in channel])]))
+        return np.array(final_img)
 
     def w(self, k_num):
         # for use in DCT transformation
@@ -383,7 +395,7 @@ class decoder:
 
     def DCT_3(self, img):
         # basically the same as DCT2, but returns Y values from DCT coefs!
-        return np.array([np.array([cv2.idct(block) for block in row]) for row in img])
+        return np.array([np.array([np.array([cv2.idct(block) for block in row]) for row in channel]) for channel in img])
 
     def BGR_convert(self, YCbCr):
         # values from https://wikipedia.org/wiki/YCbCr#JPEG_conversion
@@ -393,7 +405,7 @@ class decoder:
         R = Y + 1.402*(Cr-128)
         return B, G, R
 
-    def YCbCr2BGR(self, Y_img, Cb_img, Cr_img):
+    def YCbCr2BGR(self, orig_img):
         img = list()
         # I know this looks bad but it's only O(n^2)!
         for row in range(self.ver_block_count):
@@ -403,9 +415,9 @@ class decoder:
                 for block in range(self.BLOCK_SIZE):
                     pixel_row = list()
                     for pixel_i in range(self.BLOCK_SIZE):
-                        Y_val = Y_img[row][column][block][pixel_i]
-                        Cb_val = Cb_img[row][column][block][pixel_i]
-                        Cr_val = Cr_img[row][column][block][pixel_i]
+                        Y_val = orig_img[0][row][column][block][pixel_i]
+                        Cb_val = orig_img[1][row][column][block][pixel_i]
+                        Cr_val = orig_img[2][row][column][block][pixel_i]
                         pixel_row.append(np.array(self.BGR_convert([Y_val, Cb_val, Cr_val])))
                     BGR_block.append(np.array(pixel_row))
                 img_tiles.append(np.array(BGR_block))
@@ -654,23 +666,21 @@ class decoder:
             Y_decoded_img, Cb_decoded_img, Cr_decoded_img = self.huffmanDecode(bitstring)
             print("finished decode")
 
-            Y_zz_img = self.unRLE(Y_decoded_img)
-            Cb_zz_img = self.unRLE(Cb_decoded_img)
-            Cr_zz_img = self.unRLE(Cr_decoded_img)
+            img = self.unRLE([Y_decoded_img, Cb_decoded_img, Cr_decoded_img])
             print("extracted zigzags")
 
             if func == 0:
                 msg_path = self.formatPathF5(hash_path)
-                message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img], False)
+                message = self.extractF5(msg_path, img, False)
             elif func == 1:
                 msg_path = self.formatPath(hash_path, mode=1)
-                message = self.extractsdcsF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
+                message = self.extractsdcsF5(msg_path, img)
             elif func == 2:
                 msg_path = self.formatPath(hash_path, mode=0)
-                message = self.extractdmcss(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
+                message = self.extractdmcss(msg_path, img)
             elif func == 3:
                 msg_path = self.formatPathF5(hash_path)
-                message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img], True)
+                message = self.extractF5(msg_path, img, True)
             if use_rs:
                 rs_obj = rs(self.RS_PARAM)
                 polys = self.extractRSPoly(message)
@@ -685,37 +695,29 @@ class decoder:
                 message = self.extractMsgTxt(message)
                 print("non-rs extracted message:", message)
 
-            Y_zz_img = self.unDPCM(Y_zz_img)
-            Cb_zz_img = self.unDPCM(Cb_zz_img)
-            Cr_zz_img = self.unDPCM(Cr_zz_img)
+            img = self.unDPCM(img)
             print("extracted DC values from DPCM")
 
-            Y_img_tiles = self.unZigZag(Y_zz_img)
-            Cb_img_tiles = self.unZigZag(Cb_zz_img)
-            Cr_img_tiles = self.unZigZag(Cr_zz_img)
+            img = self.unZigZag(img)
             print("restored 8x8 tiles")
 
-            Y_dct_img = self.deQuantize(Y_img_tiles, True)
-            Cb_dct_img = self.deQuantize(Cb_img_tiles, False)
-            Cr_dct_img = self.deQuantize(Cr_img_tiles, False)
+            img = self.deQuantize(img)
             print("reversed quantization")
 
             print("beginning dct...")
-            Y_img = self.DCT_3(Y_dct_img)
-            Cb_img = self.DCT_3(Cb_dct_img)
-            Cr_img = self.DCT_3(Cr_dct_img)
+            img = self.DCT_3(img)
             print("performed inverse DCT")
 
-            img_tiles = self.YCbCr2BGR(Y_img, Cb_img, Cr_img)
+            img = self.YCbCr2BGR(img)
             print("converted YCbCr to BGR")
 
-            final_img = self.assembleImage(img_tiles)
+            img = self.assembleImage(img)
 
             if self.img_height != v_img_height:
-                final_img = self.removeVPadding(final_img, v_img_height)
+                img = self.removeVPadding(img, v_img_height)
             if self.img_width != v_img_width:
-                final_img = self.removeHPadding(final_img, v_img_width)
-            cv2.imwrite(output_file+'.png', final_img)
+                img = self.removeHPadding(img, v_img_width)
+            cv2.imwrite(output_file+'.png', img)
             print("done!")
         
         else:
@@ -736,43 +738,35 @@ class decoder:
             total_blocks = self.ver_block_count * self.hor_block_count
 
             Y_img, Cr_img, Cb_img = cv2.split(jpg_img)
-            Y_img, Cr_img, Cb_img = encoder_obj.blockify(Y_img), encoder_obj.blockify(Cr_img), encoder_obj.blockify(Cb_img)
+            img = encoder_obj.blockify([Y_img, Cb_img, Cr_img])
             print("Separated successfully")
 
             print("beginning dct...")
-            Y_img_dct = encoder_obj.DCT_2(Y_img)
-            Cb_img_dct = encoder_obj.DCT_2(Cb_img)
-            Cr_img_dct = encoder_obj.DCT_2(Cr_img)
+            img = encoder_obj.DCT_2(img)
             print("finished dct")
 
-            Y_img_quant = encoder_obj.quantizeAndRound(Y_img_dct, True)
-            Cb_img_quant = encoder_obj.quantizeAndRound(Cb_img_dct, False)
-            Cr_img_quant = encoder_obj.quantizeAndRound(Cr_img_dct, False)
+            img = encoder_obj.quantizeAndRound(img)
             print("finished quantization and round")
 
-            Y_zz_img = encoder_obj.zigZagEncode(Y_img_quant)
-            Cb_zz_img = encoder_obj.zigZagEncode(Cb_img_quant)
-            Cr_zz_img = encoder_obj.zigZagEncode(Cr_img_quant)
+            img = encoder_obj.zigZagEncode(img)
             print("finished zigzag")
 
-            Y_zz_img = np.reshape(Y_zz_img, (total_blocks, self.BLOCK_SIZE * self.BLOCK_SIZE))
-            Cb_zz_img = np.reshape(Cb_zz_img, (total_blocks, self.BLOCK_SIZE * self.BLOCK_SIZE))
-            Cr_zz_img = np.reshape(Cr_zz_img, (total_blocks, self.BLOCK_SIZE * self.BLOCK_SIZE))
+            img = [np.reshape(channel, (total_blocks, self.BLOCK_SIZE * self.BLOCK_SIZE)) for channel in img]
 
             hash_path = self.retrievePath(key)
 
             if func == 0:
                 msg_path = self.formatPathF5(hash_path)
-                message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img], False)
+                message = self.extractF5(msg_path, img, False)
             elif func == 1:
                 msg_path = self.formatPath(hash_path, mode=1)
-                message = self.extractsdcsF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
+                message = self.extractsdcsF5(msg_path, img)
             elif func == 2:
                 msg_path = self.formatPath(hash_path, mode=0)
-                message = self.extractdmcss(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img])
+                message = self.extractdmcss(msg_path, img)
             elif func == 3:
                 msg_path = self.formatPathF5(hash_path)
-                message = self.extractF5(msg_path, [Y_zz_img, Cb_zz_img, Cr_zz_img], True)
+                message = self.extractF5(msg_path, img, True)
             if use_rs:
                 rs_obj = rs(self.RS_PARAM)
                 polys = self.extractRSPoly(message)

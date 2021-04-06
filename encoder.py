@@ -301,20 +301,23 @@ class encoder:
         cv2.destroyAllWindows()
 
     def blockify(self, img):
-        img_tiles = list() # transform image into series of 8x8 blocks
-        for row in range(0, self.img_height, self.BLOCK_SIZE):
-            img_tiles_row = list() # fill in row by row
-            for column in range(0, self.img_width, self.BLOCK_SIZE):
-                column_end = column + self.BLOCK_SIZE
-                row_end = row + self.BLOCK_SIZE
-                # select the 8x8 tile
-                tile = img[row:row_end, column:column_end]
-                # add it to the row array
-                img_tiles_row.append(tile)
-            # append rows individually to the image matrix
-            # this ensure the dimensions are consistent
-            img_tiles.append(img_tiles_row)
-        return np.array(img_tiles, dtype=np.float32)
+        final_img = list()
+        for channel in img:
+            img_tiles = list() # transform image into series of 8x8 blocks
+            for row in range(0, self.img_height, self.BLOCK_SIZE):
+                img_tiles_row = list() # fill in row by row
+                for column in range(0, self.img_width, self.BLOCK_SIZE):
+                    column_end = column + self.BLOCK_SIZE
+                    row_end = row + self.BLOCK_SIZE
+                    # select the 8x8 tile
+                    tile = channel[row:row_end, column:column_end]
+                    # add it to the row array
+                    img_tiles_row.append(tile)
+                # append rows individually to the image matrix
+                # this ensure the dimensions are consistent
+                img_tiles.append(img_tiles_row)
+            final_img.append(np.array(img_tiles, dtype=np.float32))
+        return np.array(final_img)
 
     def w(self, k_num):
         # for use in DCT transformation
@@ -325,18 +328,21 @@ class encoder:
 
     def DCT_2(self, img):
         # transform img into DCT coefficients
-        return np.array([np.array([cv2.dct(block) for block in row]) for row in img])
+        return np.array([np.array([np.array([cv2.dct(block) for block in row]) for row in channel]) for channel in img])
 
-    def quantizeAndRound(self, img, Y_flag):
+    def quantizeAndRound(self, img):
         # quantizes DCT coefs in-place using quant_table_2 atm (add quality options later)
         # then rounds to nearest integer
-        table = self.Y_quant_table if Y_flag else self.C_quant_table
-        return np.array([np.rint(np.divide(block, table)) for block in np.array([row for row in img])])
+        final_img = list()
+        for i, channel in enumerate(img):
+            table = self.Y_quant_table if i == 0 else self.C_quant_table
+            final_img.append(np.array([np.rint(np.divide(block, table)) for block in np.array([row for row in channel])]))
+        return np.array(final_img)
 
     def zigZagEncode(self, img):
         # https://stackoverflow.com/questions/39440633/matrix-to-vector-with-python-numpy
         # convert 8x8 block of dct coef's into a 64-len array via zig zag arrangement
-        return np.array([np.array([np.hstack([np.diagonal(block[::-1,:], k)[::(2*(k % 2)-1)] for k in range(1-block.shape[0], block.shape[0])]) for block in row]) for row in img])
+        return np.array([np.array([np.array([np.hstack([np.diagonal(block[::-1,:], k)[::(2*(k % 2)-1)] for k in range(1-block.shape[0], block.shape[0])]) for block in row]) for row in channel]) for channel in img])
 
     def RLEandDPCM(self, zz_img):
         # create array of all DC values, encoded using DPCM - each value is the difference
@@ -344,52 +350,55 @@ class encoder:
         # create array of RLE-encoded AC values - [skip, value]
         # where skip is the number of zeroes preceeding value.
         # [0,0] indicates the end of the block and is appended to the end
-        dc_array, ac_arrays = list(), list()
-        zz_img_len = len(zz_img)
-        for row_block_i in range(zz_img_len):
-            row_len = len(zz_img[row_block_i])
-            for block_i in range(row_len):
-                ac_rle = list()
-                if block_i == 0 and row_block_i == 0:
-                    # encode the first DC value as-is
-                    dc_array.append(zz_img[row_block_i][block_i][0])
-                else:
-                    # for the rest, encode the difference
-                    if block_i != 0:
-                        dc_array.append(zz_img[row_block_i][block_i][0] - zz_img[row_block_i][block_i-1][0])
+        final_img = list()
+        for channel in zz_img:
+            dc_array, ac_arrays = list(), list()
+            zz_img_len = len(channel)
+            for row_block_i in range(zz_img_len):
+                row_len = len(channel[row_block_i])
+                for block_i in range(row_len):
+                    ac_rle = list()
+                    if block_i == 0 and row_block_i == 0:
+                        # encode the first DC value as-is
+                        dc_array.append(channel[row_block_i][block_i][0])
                     else:
-                        dc_array.append(zz_img[row_block_i][block_i][0] - zz_img[row_block_i-1][block_i-1][0])
-                # start at 1 to skip the DC value
-                ac_i = 1
-                zero_count = 0
-                # max zero count is to keep track of how many 16-0's there are
-                # these should only be added to the ac_rle if there is a non-zero
-                # coefficient after them. otherwise, [0,0] should follow the final
-                # non-zero coefficient.
-                max_zero_count = 0
-                while ac_i < len(zz_img[row_block_i][block_i]):
-                    cur_num = zz_img[row_block_i][block_i][ac_i]
-                    if cur_num == 0:
-                        if zero_count == 15:
-                            max_zero_count += 1
+                        # for the rest, encode the difference
+                        if block_i != 0:
+                            dc_array.append(channel[row_block_i][block_i][0] - channel[row_block_i][block_i-1][0])
+                        else:
+                            dc_array.append(channel[row_block_i][block_i][0] - channel[row_block_i-1][block_i-1][0])
+                    # start at 1 to skip the DC value
+                    ac_i = 1
+                    zero_count = 0
+                    # max zero count is to keep track of how many 16-0's there are
+                    # these should only be added to the ac_rle if there is a non-zero
+                    # coefficient after them. otherwise, [0,0] should follow the final
+                    # non-zero coefficient.
+                    max_zero_count = 0
+                    while ac_i < len(channel[row_block_i][block_i]):
+                        cur_num = channel[row_block_i][block_i][ac_i]
+                        if cur_num == 0:
+                            if zero_count == 15:
+                                max_zero_count += 1
+                                zero_count = 0
+                                ac_i += 1
+                                continue
+                            zero_count += 1
+                            ac_i += 1
+                            continue
+                        else:
+                            if max_zero_count > 0:
+                                for _ in range(max_zero_count):
+                                    ac_rle.append([15,0])
+                            ac_rle.append([zero_count, cur_num])
                             zero_count = 0
                             ac_i += 1
                             continue
-                        zero_count += 1
-                        ac_i += 1
-                        continue
-                    else:
-                        if max_zero_count > 0:
-                            for _ in range(max_zero_count):
-                                ac_rle.append([15,0])
-                        ac_rle.append([zero_count, cur_num])
-                        zero_count = 0
-                        ac_i += 1
-                        continue
-                # append end of block marker
-                ac_rle.append([0,0])
-                ac_arrays.append(ac_rle)
-        return np.array(dc_array), ac_arrays
+                    # append end of block marker
+                    ac_rle.append([0,0])
+                    ac_arrays.append(ac_rle)
+            final_img += [np.array(dc_array), ac_arrays]
+        return np.array(final_img)
 
     def categorize(self, coef):
         # return category of coefficient (DC or AC) based on the table
@@ -440,9 +449,10 @@ class encoder:
                 oc_bitstring += '1'
         return oc_bitstring
 
-    def huffman(self, Y_dc_arr, Y_ac_arr, Cb_dc_arr, Cb_ac_arr, Cr_dc_arr, Cr_ac_arr):
+    def huffman(self, img):
         # compute and create final bitstring of data
         # dc and ac arrays should have same length, so can just use one
+        Y_dc_arr, Y_ac_arr, Cb_dc_arr, Cb_ac_arr, Cr_dc_arr, Cr_ac_arr = img
         bitstring = ''
         length = len(Y_dc_arr)
         dc_arr, ac_arr = Y_dc_arr, Y_ac_arr # set default value to remove warnings
@@ -500,8 +510,9 @@ class encoder:
         else:
             return int(x % 2)
 
-    def sdcsF5(self, msg, c1, c2, c3):
+    def sdcsF5(self, msg, img):
         hash_path = ''
+        num_channels = img.shape[0]
         # set up sdcs
         n, k, m, a = 3, 2, 17, [1,2,6]
         f5_sdcs = sdcs((n,k,m), a)
@@ -514,14 +525,13 @@ class encoder:
         # what to do with left-over vals if it doesnt divide equally into n coefs?
         # begin embedding
         path = list()
-        channels = [c1,c2,c3]
         b_i = 0
-        block_perms = np.arange(3 * self.ver_block_count * self.hor_block_count)
+        block_perms = np.arange(num_channels * self.ver_block_count * self.hor_block_count)
         for block_num in block_perms:
             channel_i = block_num // (self.ver_block_count * self.hor_block_count)
             row_i = (block_num % (self.ver_block_count * self.hor_block_count)) // self.hor_block_count
             block_i = (block_num % (self.ver_block_count * self.hor_block_count)) % self.hor_block_count
-            channel = channels[channel_i]
+            channel = img[channel_i]
             suitable_coefs_boolmask = np.array([0<coef<(m-1) for coef in channel[row_i][block_i]]) # true or false based on value
             suitable_coefs_boolmask[0] = False # avoid DC values
             suitable_coefs = np.extract(suitable_coefs_boolmask, channel[row_i][block_i]) # filter array by value
@@ -545,7 +555,7 @@ class encoder:
                     path.append([channel_i, row_i, block_i, block_path])
                     b_i += 1
                     if b_i >= len(b_arr):
-                        return hash_path, c1, c2, c3
+                        return hash_path, img
         raise Exception('Message is too long!')
 
     def compress(self, block, qm, t):
@@ -599,26 +609,26 @@ class encoder:
             i += 1
         return x
 
-    def dmcss(self, msg, c1, c2, c3):
+    def dmcss(self, msg, img):
         # rather than doing random gen, generate a permutation
         # makes checking max length exceeded easier too!
         # array n perms of block range, n num of rows
         TAU = 3
+        num_channels = img.shape[0]
         msg_i = 0
         hash_path = ''
         path = list()
-        channels = [c1,c2,c3]
         H_hat = np.array([71,109], dtype=np.uint8)
         stc_obj = stc(H_hat)
         map_sign = lambda x: 1 if math.copysign(1, x) == 1 else 0
-        block_perms = np.random.permutation(np.arange(3 * self.ver_block_count * self.hor_block_count))
+        block_perms = np.random.permutation(np.arange(num_channels * self.ver_block_count * self.hor_block_count))
         for block_num in block_perms:
             if msg_i >= len(msg):
-                return hash_path, c1, c2, c3
+                return hash_path, img
             channel_i = block_num // (self.ver_block_count * self.hor_block_count)
             row_i = (block_num % (self.ver_block_count * self.hor_block_count)) // self.hor_block_count
             block_i = (block_num % (self.ver_block_count * self.hor_block_count)) % self.hor_block_count
-            channel = channels[channel_i]
+            channel = img[channel_i]
             qcomp = self.genQFactor(60, self.Y_quant_table if channel_i == 0 else self.C_quant_table)
             block = channel[row_i][block_i]
             # compress block
@@ -652,21 +662,21 @@ class encoder:
             hash_path += ''.join(['0', str(channel_i), str(global_block).zfill(len(str(self.ver_block_count*self.hor_block_count)))] + [str(x).zfill(2) + str(y).zfill(2) for x, y in block_path] + ['0','0'])
         raise Exception('Message too long!')
 
-    def drF5(self, msg, c1 , c2 ,c3):
+    def drF5(self, msg, img):
         hash_path = ''
         path = list()
         msg_i = 0
-        channels = [c1,c2,c3]
-        block_perms = np.random.permutation(np.arange(3 * self.ver_block_count * self.hor_block_count))
+        num_channels = img.shape[0]
+        block_perms = np.random.permutation(np.arange(num_channels * self.ver_block_count * self.hor_block_count))
         H_hat = np.array([71,109], dtype=np.uint8)
         stc_obj = stc(H_hat)
         for block_num in block_perms:
             if msg_i >= len(msg):
-                return hash_path, c1, c2, c3
+                return hash_path, img
             channel_i = block_num // (self.ver_block_count * self.hor_block_count)
             row_i = (block_num % (self.ver_block_count * self.hor_block_count)) // self.hor_block_count
             block_i = (block_num % (self.ver_block_count * self.hor_block_count)) % self.hor_block_count
-            channel = channels[channel_i]
+            channel = img[channel_i]
             block = channel[row_i][block_i]
             coef_mask = np.array([abs(coef) > 0 for coef in block])
             coef_mask[0] = False # ignore dc coef
@@ -695,22 +705,22 @@ class encoder:
             hash_path += ''.join(['0', str(channel_i), str(global_block).zfill(len(str(self.ver_block_count*self.hor_block_count)))] + [str(x).zfill(2) for x in block_path] + ['0','0'])
         raise Exception('Message too long!')
 
-    def F5(self, msg, c1, c2, c3):
+    def F5(self, msg, img):
+        num_channels = img.shape[0]
         # c1, c2, c3 = y,cb,cr
         path = list()
         i, j = 0, 1
-        channels = [c1,c2,c3]
         # random permutation of row indices
         # generate a new permutation of blocks for each row change
-        block_perms = np.random.permutation(np.arange(3 * self.ver_block_count * self.hor_block_count))
+        block_perms = np.random.permutation(np.arange(num_channels * self.ver_block_count * self.hor_block_count))
         for block_num in block_perms:
             if i >= len(msg):
                 path = self.formatPath(np.array(path))
-                return path, c1, c2, c3
+                return path, img
             channel_i = block_num // (self.ver_block_count * self.hor_block_count)
             row_i = (block_num % (self.ver_block_count * self.hor_block_count)) // self.hor_block_count
             block_i = (block_num % (self.ver_block_count * self.hor_block_count)) % self.hor_block_count
-            channel = channels[channel_i]
+            channel = img[channel_i]
             j = 1
             while j < 64:
                 host = channel[row_i][block_i][j]
@@ -734,24 +744,24 @@ class encoder:
                 j+=1
         raise Exception('Message too long!')
 
-    def LSB(self, msg, c1, c2, c3):
+    def LSB(self, msg, img):
         msg_i = 0
         path = list()
-        channels = [c1,c2,c3]
         # choosing to store in the last 10 ac coefficients to reduce artefacts
         START_COEF = 1
         END_COEF = 10
+        num_channels = img.shape[0]
         valid_indices = np.arange(START_COEF,END_COEF)
-        block_perms = np.arange(3 * self.ver_block_count * self.hor_block_count)
+        block_perms = np.arange(num_channels * self.ver_block_count * self.hor_block_count)
         for block_num in block_perms:
             channel_i = block_num // (self.ver_block_count * self.hor_block_count)
             row_i = (block_num % (self.ver_block_count * self.hor_block_count)) // self.hor_block_count
             block_i = (block_num % (self.ver_block_count * self.hor_block_count)) % self.hor_block_count
-            channel = channels[channel_i]
+            channel = img[channel_i]
             for coef_i in np.random.permutation(valid_indices):
                 if msg_i >= len(msg):
                     path = self.formatPath(np.array(path))
-                    return path, c1, c2, c3
+                    return path, img
                 bit = msg[msg_i]
                 chosen_coef = int(channel[row_i][block_i][coef_i])
                 if str(chosen_coef % 2) != bit:
@@ -804,23 +814,17 @@ class encoder:
             pickle.dump((new_img_height, new_img_width), fp)
 
         Y_img, Cr_img, Cb_img = cv2.split(img)
-        Y_img, Cr_img, Cb_img = self.blockify(Y_img), self.blockify(Cr_img), self.blockify(Cb_img)
+        img = self.blockify([Y_img, Cb_img, Cr_img])
         print("Separated successfully")
 
         print("beginning dct...")
-        Y_img_dct = self.DCT_2(Y_img)
-        Cb_img_dct = self.DCT_2(Cb_img)
-        Cr_img_dct = self.DCT_2(Cr_img)
+        img = self.DCT_2(img)
         print("finished dct")
 
-        Y_img_quant = self.quantizeAndRound(Y_img_dct, True)
-        Cb_img_quant = self.quantizeAndRound(Cb_img_dct, False)
-        Cr_img_quant = self.quantizeAndRound(Cr_img_dct, False)
+        img = self.quantizeAndRound(img)
         print("finished quantization and round")
 
-        Y_zz_img = self.zigZagEncode(Y_img_quant)
-        Cb_zz_img = self.zigZagEncode(Cb_img_quant)
-        Cr_zz_img = self.zigZagEncode(Cr_img_quant)
+        img = self.zigZagEncode(img)
         print("finished zigzag")
 
         print("encoding message...")
@@ -838,16 +842,16 @@ class encoder:
                 bin_poly = [format(num, '08b') for num in np.array(message_poly, dtype=np.uint8)]
                 bin_msg += ''.join([bit for bit in bin_poly])
         if func == 0:
-            hash_path, Y_zz_img, Cb_zz_img, Cr_zz_img = self.F5(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
+            hash_path, img = self.F5(bin_msg, img)
 
         elif func == 1:
-            hash_path, Y_zz_img, Cb_zz_img, Cr_zz_img = self.sdcsF5(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
+            hash_path, img = self.sdcsF5(bin_msg, img)
 
         elif func == 2:
-            hash_path, Y_zz_img, Cb_zz_img, Cr_zz_img = self.dmcss(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
+            hash_path, img = self.dmcss(bin_msg, img)
         
         elif func == 3:
-            hash_path, Y_zz_img, Cb_zz_img, Cr_zz_img = self.LSB(bin_msg, Y_zz_img, Cb_zz_img, Cr_zz_img)
+            hash_path, img = self.LSB(bin_msg, img)
         
         else:
             raise ValueError('Algorithm must be:\n0: F5\n1: SDCS F5\n2: drF5')
@@ -856,12 +860,10 @@ class encoder:
 
         if verbose:
             # verbose mode outputs jpeg as txt and completes all encoding steps
-            Y_dc_arr, Y_ac_arr = self.RLEandDPCM(Y_zz_img)
-            Cb_dc_arr, Cb_ac_arr = self.RLEandDPCM(Cb_zz_img)
-            Cr_dc_arr, Cr_ac_arr = self.RLEandDPCM(Cr_zz_img)
+            img = self.RLEandDPCM(img)
             print("finished rle")
 
-            bitstring = self.huffman(Y_dc_arr, Y_ac_arr, Cb_dc_arr, Cb_ac_arr, Cr_dc_arr, Cr_ac_arr)
+            bitstring = self.huffman(img)
             final_file = open(output_name+".txt", "w")
             final_file.write(bitstring)
             final_file.close()
@@ -871,12 +873,12 @@ class encoder:
             from decoder import decoder
             decoder_obj = decoder(self.BLOCK_SIZE, self.RS_PARAM)
             decoder_obj.defineBlockCount(self.ver_block_count, self.hor_block_count)
-            Y_zz_img, Cb_zz_img, Cr_zz_img = Y_zz_img.reshape((total_blocks, self.BLOCK_SIZE*self.BLOCK_SIZE)), Cb_zz_img.reshape((total_blocks, self.BLOCK_SIZE*self.BLOCK_SIZE)), Cr_zz_img.reshape((total_blocks, self.BLOCK_SIZE*self.BLOCK_SIZE))
-            Y_img_tiles, Cb_img_tiles, Cr_img_tiles = decoder_obj.unZigZag(Y_zz_img), decoder_obj.unZigZag(Cb_zz_img), decoder_obj.unZigZag(Cr_zz_img)
-            Y_dct_img, Cb_dct_img, Cr_dct_img = decoder_obj.deQuantize(Y_img_tiles, True), decoder_obj.deQuantize(Cb_img_tiles, False), decoder_obj.deQuantize(Cr_img_tiles, False)
-            Y_img, Cb_img, Cr_img = decoder_obj.DCT_3(Y_dct_img), decoder_obj.DCT_3(Cb_dct_img), decoder_obj.DCT_3(Cr_dct_img)
-            img_tiles = np.clip(decoder_obj.YCbCr2BGR(Y_img, Cb_img, Cr_img), 0,255)
-            img = decoder_obj.assembleImage(img_tiles)
+            img = [channel.reshape((total_blocks, self.BLOCK_SIZE*self.BLOCK_SIZE)) for channel in img]
+            img = decoder_obj.unZigZag(img)
+            img = decoder_obj.deQuantize(img)
+            img = decoder_obj.DCT_3(img)
+            img = np.clip(decoder_obj.YCbCr2BGR(img), 0,255)
+            img = decoder_obj.assembleImage(img)
             #print("dumbass motherfucker:", img_tiles[0][19], img_tiles[0][19].astype(np.uint8))
             if self.img_height != new_img_height:
                 img = decoder_obj.removeVPadding(img, new_img_height)
@@ -893,12 +895,12 @@ class encoder:
 ########################################
 
 #encoder_obj = encoder(8, 256)
-#encoder_obj.encode("./images/fagen.png", "message.txt", func=2, verbose=False, use_rs=True)
+#encoder_obj.encode("./images/fagen.png", "message.txt", func=3, verbose=False, use_rs=True)
 
 #key = 'Sixteen byte key'
 #from decoder import decoder
 #decoder_obj = decoder(8, 256)
-#decoder_obj.decode('stego', bytes(key, "utf8"), func=2, verbose=False, use_rs=True)
+#decoder_obj.decode('stego', bytes(key, "utf8"), func=3, verbose=False, use_rs=True)
 
 #img = cv2.imread("images/fagen.png", cv2.IMREAD_COLOR)
 #jpeg_bytes = simplejpeg.encode_jpeg(img, 100, 'BGR', '444', False)
