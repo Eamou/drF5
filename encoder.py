@@ -53,9 +53,11 @@ class encoder:
     def __readImage(self, image_name):
         # return image object img
         if image_name[-3:] == "pgm":
-            return cv2.imread(image_name, -1)
+            img, greyscale = cv2.imread(image_name, -1), True
         else:
-            return cv2.imread(image_name,cv2.IMREAD_COLOR)
+            img, greyscale = cv2.imread(image_name,cv2.IMREAD_COLOR), False
+        self.img_height, self.img_width = self.getImageDimensions(img)
+        return img, greyscale
 
     def __getDCCodewordDicts(self):
         dc_codeword_dict = {
@@ -798,24 +800,29 @@ class encoder:
         return 0
 
     def encode(self, img_name, message_path, func=2, verbose=True, use_rs=True, output_name="stego"):
-        img = self.__readImage(img_name)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2YCR_CB)
-        self.img_height, self.img_width = self.getImageDimensions(img)
+        img, greyscale = self.__readImage(img_name)
+        if not greyscale:
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2YCR_CB)
+
         with open('.v_imgdim', 'wb') as fp:
             pickle.dump((self.img_height, self.img_width), fp)
         if self.img_width % self.BLOCK_SIZE != 0:
             img = self.__padImageWidth(img)
         if self.img_height % self.BLOCK_SIZE != 0:
             img = self.__padImageHeight(img)
+        
         new_img_height, new_img_width = self.getImageDimensions(img)
         self.hor_block_count, self.ver_block_count = new_img_width // self.BLOCK_SIZE, new_img_height // self.BLOCK_SIZE
         total_blocks = self.ver_block_count * self.hor_block_count
         with open('.imgdim', 'wb') as fp:
             pickle.dump((new_img_height, new_img_width), fp)
 
-        Y_img, Cr_img, Cb_img = cv2.split(img)
-        img = self.blockify([Y_img, Cb_img, Cr_img])
-        print("Separated successfully")
+        if not greyscale:
+            Y_img, Cr_img, Cb_img = cv2.split(img)
+            img = self.blockify([Y_img, Cb_img, Cr_img])
+            print("Separated successfully")
+        else:
+            img = self.blockify([img])
 
         print("beginning dct...")
         img = self.DCT_2(img)
@@ -877,30 +884,35 @@ class encoder:
             img = decoder_obj.unZigZag(img)
             img = decoder_obj.deQuantize(img)
             img = decoder_obj.DCT_3(img)
-            img = np.clip(decoder_obj.YCbCr2BGR(img), 0,255)
+            if not greyscale:
+                img = np.clip(decoder_obj.YCbCr2BGR(img), 0,255)
+            else:
+                img = np.clip(img, 0, 255)[0]
             img = decoder_obj.assembleImage(img)
-            #print("dumbass motherfucker:", img_tiles[0][19], img_tiles[0][19].astype(np.uint8))
             if self.img_height != new_img_height:
                 img = decoder_obj.removeVPadding(img, new_img_height)
             if self.img_width != new_img_width:
                 img = decoder_obj.removeHPadding(img, new_img_width)
             #cv2.imwrite(output_name+".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
-            jpeg_bytes = simplejpeg.encode_jpeg(img.astype(np.uint8), 100, 'BGR', '444', False)
-            with open(output_name+".jpg", "wb") as f:
-                f.write(jpeg_bytes)
+            if not greyscale:
+                jpeg_bytes = simplejpeg.encode_jpeg(img.astype(np.uint8), 100, 'BGR', '444', False)
+                with open(output_name+".jpg", "wb") as f:
+                    f.write(jpeg_bytes)
+            else:
+                cv2.imwrite(output_name+".jpg", img)
             print("done!")
 
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
-
+#"./bossbase/1.pgm"
 #encoder_obj = encoder(8, 256)
-#encoder_obj.encode("./images/fagen.png", "message.txt", func=3, verbose=False, use_rs=True)
+#encoder_obj.encode("./images/fagen.png", "message.txt", func=2, verbose=False, use_rs=True)
 
-#key = 'Sixteen byte key'
-#from decoder import decoder
-#decoder_obj = decoder(8, 256)
-#decoder_obj.decode('stego', bytes(key, "utf8"), func=3, verbose=False, use_rs=True)
+key = 'Sixteen byte key'
+from decoder import decoder
+decoder_obj = decoder(8, 256)
+decoder_obj.decode('stego', bytes(key, "utf8"), func=2, verbose=False, use_rs=True, greyscale=False)
 
 #img = cv2.imread("images/fagen.png", cv2.IMREAD_COLOR)
 #jpeg_bytes = simplejpeg.encode_jpeg(img, 100, 'BGR', '444', False)

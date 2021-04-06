@@ -647,7 +647,7 @@ class decoder:
             partition = list()
         return new_path
          
-    def decode(self, img, key, func=2, verbose=True, use_rs=True, output_file="stego"):
+    def decode(self, img, key, func=2, verbose=True, use_rs=True, output_file="stego", greyscale=False):
         if verbose:
             with open(img, 'r') as f:
                 bitstring = f.read()
@@ -724,9 +724,12 @@ class decoder:
             from encoder import encoder
             encoder_obj = encoder(self.BLOCK_SIZE, self.RS_PARAM)
             encoder_obj.defineBlockCount(self.ver_block_count, self.hor_block_count)
-            with open(img+".jpg", "rb") as f:
-                jpg_img = simplejpeg.decode_jpeg(f.read(), 'BGR', False, False)
-            jpg_img = cv2.cvtColor(jpg_img, cv2.COLOR_BGR2YCR_CB)
+            if not greyscale:
+                with open(img+".jpg", "rb") as f:
+                    jpg_img = simplejpeg.decode_jpeg(f.read(), 'BGR', False, False)
+                    jpg_img = cv2.cvtColor(jpg_img, cv2.COLOR_BGR2YCR_CB)
+            else:
+                jpg_img = cv2.imread(img+".jpg", cv2.IMREAD_GRAYSCALE)
             self.img_height, self.img_width = self.getImageDimensions(jpg_img)
             encoder_obj.defineImgDim(self.img_height, self.img_width)
             if self.img_width % self.BLOCK_SIZE != 0:
@@ -737,8 +740,11 @@ class decoder:
             self.hor_block_count, self.ver_block_count = new_img_width // self.BLOCK_SIZE, new_img_height // self.BLOCK_SIZE
             total_blocks = self.ver_block_count * self.hor_block_count
 
-            Y_img, Cr_img, Cb_img = cv2.split(jpg_img)
-            img = encoder_obj.blockify([Y_img, Cb_img, Cr_img])
+            if not greyscale:
+                Y_img, Cr_img, Cb_img = cv2.split(jpg_img)
+                img = encoder_obj.blockify([Y_img, Cb_img, Cr_img])
+            else:
+                img = encoder_obj.blockify([jpg_img])
             print("Separated successfully")
 
             print("beginning dct...")
