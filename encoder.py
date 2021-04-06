@@ -52,7 +52,10 @@ class encoder:
 
     def __readImage(self, image_name):
         # return image object img
-        return cv2.imread(image_name,cv2.IMREAD_COLOR)
+        if image_name[-3:] == "pgm":
+            return cv2.imread(image_name, -1)
+        else:
+            return cv2.imread(image_name,cv2.IMREAD_COLOR)
 
     def __getDCCodewordDicts(self):
         dc_codeword_dict = {
@@ -272,13 +275,13 @@ class encoder:
         # return image height, width as integers
         return img.shape[0], img.shape[1]
 
-    def __padImageHeight(self, img):
+    def padImageHeight(self, img):
         # repeat last row of pixels until dimension is multiple of 8
         while len(img) % self.BLOCK_SIZE != 0:
             img = np.append(img, [img[len(img)-1]], axis=0)
         return img
 
-    def __padImageWidth(self, img):
+    def padImageWidth(self, img):
         # repeat last column of pixels until dimension is multiple of 8
         img_list = list(img)
         width = self.getImageDimensions(img)[1]
@@ -642,7 +645,7 @@ class encoder:
             diff_manc = self.diffMancEnc(final_coefs)+1
             block_path = [[x, diff_manc[i]] for i, x in enumerate(coefs_ind)]
             # format path properly
-            path.append([channel_i, row_i, block_i, block_path])
+            path.append([channel_i, row_i, block_i])
             int_format = len(str(self.ver_block_count*self.hor_block_count))
             if int_format % 2 != 0: int_format += 1
             global_block = (row_i * self.hor_block_count) + block_i
@@ -890,12 +893,12 @@ class encoder:
 ########################################
 
 #encoder_obj = encoder(8, 256)
-#encoder_obj.encode("images/fagen.png", "message.txt", func=3, verbose=False, use_rs=True)
+#encoder_obj.encode("./images/fagen.png", "message.txt", func=2, verbose=False, use_rs=True)
 
 #key = 'Sixteen byte key'
 #from decoder import decoder
 #decoder_obj = decoder(8, 256)
-#decoder_obj.decode('stego', bytes(key, "utf8"), func=3, verbose=False, use_rs=True)
+#decoder_obj.decode('stego', bytes(key, "utf8"), func=2, verbose=False, use_rs=True)
 
 #img = cv2.imread("images/fagen.png", cv2.IMREAD_COLOR)
 #jpeg_bytes = simplejpeg.encode_jpeg(img, 100, 'BGR', '444', False)

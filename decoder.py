@@ -728,9 +728,9 @@ class decoder:
             self.img_height, self.img_width = self.getImageDimensions(jpg_img)
             encoder_obj.defineImgDim(self.img_height, self.img_width)
             if self.img_width % self.BLOCK_SIZE != 0:
-                jpg_img = encoder_obj.__padImageWidth(jpg_img)
+                jpg_img = encoder_obj.padImageWidth(jpg_img)
             if self.img_height % self.BLOCK_SIZE != 0:
-                jpg_img = encoder_obj.__padImageHeight(jpg_img)
+                jpg_img = encoder_obj.padImageHeight(jpg_img)
             new_img_height, new_img_width = self.getImageDimensions(jpg_img)
             self.hor_block_count, self.ver_block_count = new_img_width // self.BLOCK_SIZE, new_img_height // self.BLOCK_SIZE
             total_blocks = self.ver_block_count * self.hor_block_count
@@ -784,7 +784,6 @@ class decoder:
             else:
                 message = self.extractMsgTxt(message)
                 print("non-rs extracted message:", message)
-
             with open(output_file+".txt", 'w') as f:
                 f.write(message)
             print("message extracted successfully")
