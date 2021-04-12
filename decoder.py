@@ -1,3 +1,4 @@
+#from encoder import encoder
 import numpy as np
 import cv2
 import math
@@ -461,7 +462,7 @@ class decoder:
         else:
             return int(x % 2)
 
-    def fixMancErrors(self, y, diff_manc):
+    def oldFixMancErrors(self, y, diff_manc):
         sign = lambda x: math.copysign(1, x)
         for coef_i, coef in enumerate(y):
             if coef == 0:
@@ -473,6 +474,65 @@ class decoder:
                     else:
                         y[coef_i] = sign(y[coef_i])
         return y
+    
+    def diffMancEnc(self, a):
+        map_sign = lambda x: 1 if math.copysign(1, x) == 1 else 0
+        x = np.zeros(len(a), dtype=np.uint8)
+        x[0] = map_sign(a[0])
+        i = 1
+        while i < len(a):
+            x[i] = map_sign(a[i-1]) ^ map_sign(a[i])
+            i += 1
+        return x
+
+    def fixMancErrors(self, y, diff_manc):
+        diff_manc = ''.join([str(x) for x in diff_manc])
+        r = ''.join([str(x) for x in self.diffMancEnc(y)])
+        diff = format(int(r,2) ^ int(diff_manc,2), '0'+str(len(diff_manc))+'b')
+        i = 0
+        while i < len(diff)-1:
+            if diff[i] + diff[i+1] == '11':
+                y[i] *= -1 #what if it's zero?
+            i += 1
+        return y
+
+    def extractOptimaldmcss(self, msg_path, parity, img):
+        rs_obj = rs(256)
+        H_hat = np.array([71,109], dtype=np.uint8)
+        stc_obj = stc(H_hat)
+        bit_msg = ''
+        map_sign = lambda x: 1 if math.copysign(1, x) == 1 else 0
+        y = list()
+        diff_manc = list()
+        for loc in msg_path:
+            channel_i, row_i, block_i, block_path = loc
+            block = (row_i * self.hor_block_count) + block_i%self.hor_block_count
+            for coef_i, manc_i in block_path:
+                diff_manc.append(manc_i)
+                try:
+                    y.append(img[channel_i][block][coef_i])
+                except:
+                    # if we do random, we'll get a number the dmc can correct?
+                    y.append(np.random.choice([0,1]))
+        # fix w/ reedsolomon
+        #   split into groups of 239, append relevant parity bits
+        #   correct, then pass forward without parity#
+        y_polys = [y[j:j+rs_obj.K] for j in range(0, len(y), rs_obj.K)]
+        corrected_y = list()
+        for k, poly in enumerate(y_polys): # only need to correct 0s
+            full_poly = poly + parity[k]
+            zero_mask = [coef==0 for coef in full_poly]
+            err_ind = np.where(np.array(zero_mask) == True)[0]
+            if len(err_ind) != 0 and len(err_ind) <= (2*rs_obj.T):
+                full_poly = rs_obj.detectErasures(full_poly, err_ind)
+            corrected_y += full_poly[:-(rs_obj.N-rs_obj.K)] # wrap coefs instead of signs?
+        # now have lossy dct coefs + differentia manchester
+        y = self.fixMancErrors(corrected_y, diff_manc)
+        y = np.array([map_sign(x) for x in y])
+        H = stc_obj.gen_H(y, len(y)//2)
+        m = np.array((H @ y) % 2, dtype=np.uint8)
+        bit_msg += ''.join([str(bit) for bit in m])
+        return bit_msg
 
     def extractdmcss(self, msg_path, img):
         H_hat = np.array([71,109], dtype=np.uint8)
@@ -550,7 +610,7 @@ class decoder:
             try:
                 coef = img[channel][block][coef_i]
             except:
-                coef = 0
+                coef = np.random.choice([0,1])
             if not LSB:
                 bit_msg += str(int(self.lsbF5(coef)))
             else:
@@ -587,7 +647,7 @@ class decoder:
             path = data.decode()
         else:
             raise FileNotFoundError("Can't find path file - ensure it is named 'path_key.bin'")
-        return np.array(list(path), dtype=np.uint8)
+        return np.array(list(path))
 
     def formatPathF5(self, path):
         new_path = list()
@@ -615,7 +675,8 @@ class decoder:
             partition = list()
         return new_path
 
-    def formatPath(self, path, mode):  
+    def formatPath(self, path, mode):
+        rs_obj = rs(256)  
         new_path = list()
         split_path = np.split(path, len(path)//2)
         split_path = [''.join([str(x) for x in a]) for a in split_path]
@@ -645,6 +706,11 @@ class decoder:
             partition.append(block_path)
             new_path.append(partition)
             partition = list()
+            if split_path[i] == 'PB':
+                parity_nums = split_path[i+1:]
+                parity_nums = [int(parity_nums[j] + parity_nums[j+1]) for j in range(0, len(parity_nums), 2)]
+                parity_polys = [parity_nums[j:j+2*rs_obj.T] for j in range(0, len(parity_nums), 2*rs_obj.T)]
+                return new_path, parity_polys
         return new_path
          
     def decode(self, img, key, func=2, verbose=True, use_rs=True, output_file="stego", greyscale=False):
@@ -745,17 +811,17 @@ class decoder:
                 img = encoder_obj.blockify([Y_img, Cb_img, Cr_img])
             else:
                 img = encoder_obj.blockify([jpg_img])
-            print("Separated successfully")
+            #print("Separated successfully")
 
-            print("beginning dct...")
+            #print("beginning dct...")
             img = encoder_obj.DCT_2(img)
-            print("finished dct")
+            #print("finished dct")
 
             img = encoder_obj.quantizeAndRound(img)
-            print("finished quantization and round")
+            #print("finished quantization and round")
 
             img = encoder_obj.zigZagEncode(img)
-            print("finished zigzag")
+            #print("finished zigzag")
 
             img = [np.reshape(channel, (total_blocks, self.BLOCK_SIZE * self.BLOCK_SIZE)) for channel in img]
 
@@ -768,8 +834,8 @@ class decoder:
                 msg_path = self.formatPath(hash_path, mode=1)
                 message = self.extractsdcsF5(msg_path, img)
             elif func == 2:
-                msg_path = self.formatPath(hash_path, mode=0)
-                message = self.extractdmcss(msg_path, img)
+                msg_path, parity = self.formatPath(hash_path, mode=0)
+                message = self.extractOptimaldmcss(msg_path, parity, img)
             elif func == 3:
                 msg_path = self.formatPathF5(hash_path)
                 message = self.extractF5(msg_path, img, True)
@@ -784,6 +850,7 @@ class decoder:
             else:
                 message = self.extractMsgTxt(message)
                 print("non-rs extracted message:", message)
+            #return message
             with open(output_file+".txt", 'w') as f:
                 f.write(message)
             print("message extracted successfully")
@@ -792,6 +859,9 @@ class decoder:
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
+
+#decoder_obj = decoder(8,256)
+#print(decoder_obj.fixMancErrors([-1,-1,1,-1,1,-1,-1], [0,1,0,1,1,1,0]))
 
 #decoder_obj = decoder(8, 256)
 #decoder_obj.decode('stego_simplejpeg.jpg', b'Sixteen byte key', func=2, verbose=False)

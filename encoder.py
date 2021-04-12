@@ -611,10 +611,85 @@ class encoder:
             i += 1
         return x
 
+    def optimDMCSS(self, msg, img):
+        rs_obj = rs(256)
+        TAU = 3
+        num_channels = img.shape[0]
+        hash_path = ''
+        path = list()
+        avail_coefs = list()
+        poly_coefs = list()
+        H_hat = np.array([71,109], dtype=np.uint8)
+        stc_obj = stc(H_hat)
+        map_sign = lambda x: 1 if math.copysign(1, x) == 1 else 0
+        block_perms = np.random.permutation(np.arange(num_channels * self.ver_block_count * self.hor_block_count))
+        int_format = len(str(self.ver_block_count*self.hor_block_count))
+        if int_format % 2 != 0: int_format += 1
+        for block_num in block_perms:
+            if len(avail_coefs) >= 2 * len(msg):
+                avail_coefs = avail_coefs[:2*len(msg)]
+                poly_coefs = poly_coefs[:2*len(msg)]
+                m = np.array(list(msg), dtype=np.int_) # change if break np.uint8
+                y, _ = stc_obj.generate(avail_coefs,m)
+                y_polys = [rs_obj.encodeMsg(poly_coefs[j:j+rs_obj.K]).astype(np.int_) for j in range(0, len(poly_coefs), rs_obj.K)]
+                for row in y_polys:
+                    print(row)
+                parity_nums = list()
+                bin_msg = ''
+                for poly in y_polys:
+                    parity_nums += list(poly[len(poly)-(rs_obj.N-rs_obj.K):])
+                    poly = poly[:-(rs_obj.N-rs_obj.K)]
+                    bin_poly = [format(num, '08b') for num in np.array(poly, dtype=np.uint8)]
+                    bin_msg += ''.join([bit for bit in bin_poly])
+                final_x = list()
+                actual_i, effective_i = 0, 0
+                while actual_i < len(path):
+                    channel_i, row_i, block_i, coefs_ind = path[actual_i]
+                    for coef_ind in coefs_ind:
+                        if effective_i >= len(y):
+                            path = path[:actual_i+1]
+                            path[actual_i][3] = path[actual_i][3][:effective_i]
+                            break
+                        coef = img[channel_i][row_i][block_i][coef_ind]
+                        img[channel_i][row_i][block_i][coef_ind] *= (-1)**(map_sign(coef) - y[effective_i])
+                        final_x.append(img[channel_i][row_i][block_i][coef_ind])
+                        effective_i += 1
+                    actual_i += 1
+                diff_manc = self.diffMancEnc(final_x)+1
+                actual_i, effective_i = 0, 0
+                while actual_i < len(path):
+                    channel_i, row_i, block_i, coefs_ind = path[actual_i]
+                    block_path = list()
+                    for j, x in enumerate(coefs_ind):
+                        if j+effective_i >= len(diff_manc):
+                            break
+                        block_path.append([x, diff_manc[j+effective_i]])
+                    global_block = (row_i * self.hor_block_count) + block_i
+                    hash_path += ''.join(['0', str(channel_i), str(global_block).zfill(int_format)] + [str(x).zfill(2) + str(y).zfill(2) for x, y in block_path] + ['0','0'])            
+                    effective_i += len(coefs_ind)
+                    actual_i += 1
+                parity_nums = ''.join([str(x).zfill(4) for x in parity_nums])
+                hash_path += 'PB'+parity_nums
+                return hash_path, img
+            channel_i = block_num // (self.ver_block_count * self.hor_block_count)
+            row_i = (block_num % (self.ver_block_count * self.hor_block_count)) // self.hor_block_count
+            block_i = (block_num % (self.ver_block_count * self.hor_block_count)) % self.hor_block_count
+            channel = img[channel_i]
+            qcomp = self.genQFactor(60, self.Y_quant_table if channel_i == 0 else self.C_quant_table)
+            block = channel[row_i][block_i]
+            # compress block
+            comp_block = np.rint(np.divide(np.multiply(block.copy().reshape((self.BLOCK_SIZE,self.BLOCK_SIZE)), self.Y_quant_table if channel_i == 0 else self.C_quant_table), qcomp)).reshape((self.BLOCK_SIZE*self.BLOCK_SIZE))
+            coef_mask = np.array([0 < abs(coef) < TAU for coef in comp_block])
+            coef_mask[0] = False # ignore dc coef
+            coefs = np.extract(coef_mask, block)
+            coefs_ind = np.where(coef_mask == True)[0]
+            poly_coefs += list(coefs)
+            avail_coefs += [map_sign(x) for x in coefs]
+            path.append([channel_i, row_i, block_i, list(coefs_ind)])
+        raise Exception('Message too long!')
+
     def dmcss(self, msg, img):
-        # rather than doing random gen, generate a permutation
-        # makes checking max length exceeded easier too!
-        # array n perms of block range, n num of rows
+        # do stc at end after gathering all coefs + locations?
         TAU = 3
         num_channels = img.shape[0]
         msg_i = 0
@@ -657,7 +732,7 @@ class encoder:
             diff_manc = self.diffMancEnc(final_coefs)+1
             block_path = [[x, diff_manc[i]] for i, x in enumerate(coefs_ind)]
             # format path properly
-            path.append([channel_i, row_i, block_i])
+            path.append([channel_i, row_i, block_i, block_path])
             int_format = len(str(self.ver_block_count*self.hor_block_count))
             if int_format % 2 != 0: int_format += 1
             global_block = (row_i * self.hor_block_count) + block_i
@@ -751,7 +826,7 @@ class encoder:
         path = list()
         # choosing to store in the last 10 ac coefficients to reduce artefacts
         START_COEF = 1
-        END_COEF = 10
+        END_COEF = 64
         num_channels = img.shape[0]
         valid_indices = np.arange(START_COEF,END_COEF)
         block_perms = np.arange(num_channels * self.ver_block_count * self.hor_block_count)
@@ -766,8 +841,10 @@ class encoder:
                     return path, img
                 bit = msg[msg_i]
                 chosen_coef = int(channel[row_i][block_i][coef_i])
+                if chosen_coef == 0:
+                    continue
                 if str(chosen_coef % 2) != bit:
-                    channel[row_i][block_i][coef_i] += 1
+                    img[channel_i][row_i][block_i][coef_i] += 1
                 path.append(np.array([channel_i, row_i, block_i, coef_i]))
                 msg_i += 1
         raise Exception('Message is too long!')
@@ -789,7 +866,7 @@ class encoder:
     def hashPath(self, path):
         byte_path = str.encode(path)
         key = b'Sixteen byte key'
-        print("Your key is: ", key.decode())
+        #print("Your key is: ", key.decode())
         cipher = AES.new(key, AES.MODE_EAX)
         ciphertext, tag = cipher.encrypt_and_digest(byte_path)
 
@@ -820,21 +897,21 @@ class encoder:
         if not greyscale:
             Y_img, Cr_img, Cb_img = cv2.split(img)
             img = self.blockify([Y_img, Cb_img, Cr_img])
-            print("Separated successfully")
+            #print("Separated successfully")
         else:
             img = self.blockify([img])
 
-        print("beginning dct...")
+        #print("beginning dct...")
         img = self.DCT_2(img)
-        print("finished dct")
+        #print("finished dct")
 
         img = self.quantizeAndRound(img)
-        print("finished quantization and round")
+        #print("finished quantization and round")
 
         img = self.zigZagEncode(img)
-        print("finished zigzag")
+        #print("finished zigzag")
 
-        print("encoding message...")
+        #print("encoding message...")
         try:
             with open(message_path, 'r') as f:
                 message = f.read()
@@ -855,7 +932,7 @@ class encoder:
             hash_path, img = self.sdcsF5(bin_msg, img)
 
         elif func == 2:
-            hash_path, img = self.dmcss(bin_msg, img)
+            hash_path, img = self.optimDMCSS(bin_msg, img)
         
         elif func == 3:
             hash_path, img = self.LSB(bin_msg, img)
@@ -863,7 +940,7 @@ class encoder:
         else:
             raise ValueError('Algorithm must be:\n0: F5\n1: SDCS F5\n2: drF5')
         self.hashPath(hash_path)
-        print("encoded and written path to file")
+        #print("encoded and written path to file")
 
         if verbose:
             # verbose mode outputs jpeg as txt and completes all encoding steps
@@ -900,19 +977,19 @@ class encoder:
                     f.write(jpeg_bytes)
             else:
                 cv2.imwrite(output_name+".jpg", img)
-            print("done!")
+            #print("done!")
 
 ########################################
 ########PROGRAM BEGINS HERE#############
 ########################################
 #"./bossbase/1.pgm"
 #encoder_obj = encoder(8, 256)
-#encoder_obj.encode("./images/fagen.png", "message.txt", func=2, verbose=False, use_rs=True)
+#encoder_obj.encode("./bossbase/1.pgm", "message.txt", func=2, verbose=False, use_rs=True)
 
-key = 'Sixteen byte key'
-from decoder import decoder
-decoder_obj = decoder(8, 256)
-decoder_obj.decode('stego', bytes(key, "utf8"), func=2, verbose=False, use_rs=True, greyscale=False)
+#key = 'Sixteen byte key'
+#from decoder import decoder
+#decoder_obj = decoder(8, 256)
+#decoder_obj.decode('stego', bytes(key, "utf8"), func=2, verbose=False, use_rs=True, greyscale=True)
 
 #img = cv2.imread("images/fagen.png", cv2.IMREAD_COLOR)
 #jpeg_bytes = simplejpeg.encode_jpeg(img, 100, 'BGR', '444', False)
