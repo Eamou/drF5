@@ -288,10 +288,14 @@ class encoder:
         img_list = list(img)
         width = self.getImageDimensions(img)[1]
         while width % self.BLOCK_SIZE != 0:
-            for row_index in range(len(img)):
+            for row_index in range(len(img_list)):
                 row_list = list(img_list[row_index])
-                pixel_list = list(row_list[-1])
-                row_list.append(pixel_list)
+                try:
+                    pixel_list = list(row_list[-1])
+                    row_list.append(pixel_list)
+                except:
+                    pixel_list = [row_list[-1]]
+                    row_list += pixel_list
                 img_list[row_index] = row_list
             width += 1
         return np.array(img_list)
@@ -632,8 +636,6 @@ class encoder:
                 m = np.array(list(msg), dtype=np.int_) # change if break np.uint8
                 y, _ = stc_obj.generate(avail_coefs,m)
                 y_polys = [rs_obj.encodeMsg(poly_coefs[j:j+rs_obj.K]).astype(np.int_) for j in range(0, len(poly_coefs), rs_obj.K)]
-                for row in y_polys:
-                    print(row)
                 parity_nums = list()
                 bin_msg = ''
                 for poly in y_polys:
@@ -984,12 +986,14 @@ class encoder:
 ########################################
 #"./bossbase/1.pgm"
 #encoder_obj = encoder(8, 256)
-#encoder_obj.encode("./bossbase/1.pgm", "message.txt", func=2, verbose=False, use_rs=True)
+#encoder_obj.encode("./bossbase/1.pgm", "message.txt", func=2, verbose=False, use_rs=False)
 
-#key = 'Sixteen byte key'
-#from decoder import decoder
-#decoder_obj = decoder(8, 256)
-#decoder_obj.decode('stego', bytes(key, "utf8"), func=2, verbose=False, use_rs=True, greyscale=True)
+key = 'Sixteen byte key'
+from decoder import decoder
+decoder_obj = decoder(8, 256)
+decoder_obj.decode('stego', bytes(key, "utf8"), func=2, verbose=False, use_rs=False, greyscale=True)
+
+#none type poly in optimaldmcssdecode HUH?? //FIXED was not returning if no errors!
 
 #img = cv2.imread("images/fagen.png", cv2.IMREAD_COLOR)
 #jpeg_bytes = simplejpeg.encode_jpeg(img, 100, 'BGR', '444', False)

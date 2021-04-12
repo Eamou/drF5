@@ -513,7 +513,7 @@ class decoder:
                     y.append(img[channel_i][block][coef_i])
                 except:
                     # if we do random, we'll get a number the dmc can correct?
-                    y.append(np.random.choice([0,1]))
+                    y.append(0)
         # fix w/ reedsolomon
         #   split into groups of 239, append relevant parity bits
         #   correct, then pass forward without parity#
@@ -851,7 +851,7 @@ class decoder:
                 message = self.extractMsgTxt(message)
                 print("non-rs extracted message:", message)
             #return message
-            with open(output_file+".txt", 'w') as f:
+            with open(output_file+".txt", 'w', encoding="utf-8") as f:
                 f.write(message)
             print("message extracted successfully")
             exit(0)
