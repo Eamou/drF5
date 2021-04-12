@@ -216,6 +216,13 @@ class rs:
         self.T = (self.N - self.K) // 2
         self.B = 0
     
+    def __gen_generator_poly(self, N, K):
+        f = [1]
+        for i in range(N-K):
+            alpha_i = self.gf.ANTILOG_TABLE[i]
+            f = self.gf_poly.polyMult(f, [alpha_i, 1])
+        return f[::-1]
+
     def __def_params(self, GF_PARAM):
         if GF_PARAM == 16:
             GEN_POLY = [1,0,0,1,1]             # x^4 + x + 1 :: [1,0,0,1,1] :: field gen poly
@@ -225,10 +232,10 @@ class rs:
 
         elif GF_PARAM == 256:
             GEN_POLY = [1,0,0,0,1,1,1,0,1]      # polynomial: x^8 + x^4 + x^3 + x^2 + 1 :: 285 :: 0x11D
-            CODE_GEN_POLY = [1, 59, 13, 104, 189, 68, 209, 30, 8, 163, 65, 41, 229, 98, 50, 36, 59]
+            # need correct code gen poly
             N = 255
-            K = 239
-
+            K = 223
+            CODE_GEN_POLY = self.__gen_generator_poly(N, K) #[1, 59, 13, 104, 189, 68, 209, 30, 8, 163, 65, 41, 229, 98, 50, 36, 59]
         return N, K, GEN_POLY, CODE_GEN_POLY
 
     # Message will be a two-dimensional array containing k-1 decimal (from 8-bit) symbols.
@@ -321,12 +328,15 @@ class rs:
                     loc_roots.append(alpha_j)
             if len(loc_roots) != len(loc_poly)-1:
                 # if the locaction polynomial has num of roots unequal to its degree, too many errors.
-                # raise Exception('Codeword contains too many errors')
-                cont = str(input('ERROR: Codeword contains too many errors to correct. Continue anyway? y/n: '))
-                if cont != 'y':
-                    exit(0)
+                raise Exception('Codeword contains too many errors')
+                #cont = str(input('ERROR: Codeword contains too many errors to correct. Continue anyway? y/n: '))
+                #if cont != 'y':
+                #    exit(0)
             errors = self.findErrors(loc_poly, mag_poly)
-            R_x = self.fixErrors(R_x, errors)
+            try:
+                R_x = self.fixErrors(R_x, errors)
+            except:
+                return R_x
         return R_x
 
     # Converts message bitstring into polynomial with decimal coefficients
@@ -338,7 +348,60 @@ class rs:
         messages = [message[i:i+self.K] for i in range(0, len(message), self.K)]
         return np.array([self.encodeMsg(message) for message in messages])
 
+    def getLocPoly(self, R_x, err_locs):
+        #convert error locations to right-to-left indices
+        err_locs = [len(R_x)-1-x for x in err_locs]
+        loc_poly = [1]
+        for i in err_locs:
+            alpha_i = self.gf.ANTILOG_TABLE[i]
+            loc_poly = self.gf_poly.polyMult(loc_poly, [alpha_i, 1])
+        return loc_poly
+
+    def getErrPoly(self, S_x, L_x):
+        f = np.zeros((2*self.T)+1)
+        f[0] = 1
+        _, r = self.gf_poly.polyDiv(self.gf_poly.polyMult(S_x, L_x), f)
+        return r
+
+    def detectErasures(self, R_x, err_locs):
+        syndromes = list()
+        for i in range(self.B, self.B+(2*self.T)):
+            alpha_i = self.gf.ANTILOG_TABLE[i]
+            S_i = self.gf_poly.polyVal(R_x, alpha_i)
+            syndromes.insert(0, S_i)
+        syndromes = np.trim_zeros(syndromes, 'f')
+        if np.count_nonzero(syndromes) != 0:
+            loc_poly = self.getLocPoly(R_x, err_locs) #capital Gamma
+            err_poly = self.getErrPoly(syndromes, loc_poly)
+            errors = self.findErrors(loc_poly, err_poly)
+            return self.fixErrors(R_x, errors)
+
 #rs_obj = rs(256)
+#m = [1,2,3,4,5,6,7,8,9,10,11]
+#e = rs_obj.encodeMsg(m)
+#print(e)
+#e[1] = 0
+#e[2] = 0
+#print(e)
+#print(rs_obj.detectErasures(e, [1, 2]))
+
+
+#rs_obj = rs(256)
+#mp = [1,2,3,4,5,6,7,8,9,10,12]
+#ep = rs_obj.encodeMsg(mp)
+#print(ep)
+#ep[2] = 0
+#ep[4] = 5
+#ep[6] = 7
+#print(ep)
+#print(rs_obj.detectErrors(ep))
+
+# encode the coefficients themselves.
+# reed solomon will restore coefficients that went to 0 but loses the sign.
+# then dmcss restores the sign and the message can be extracted.
+
+
+
 #print(rs_obj.detectErrors(np.array([114., 101., 101., 100.,  32., 115., 111., 108., 111., 109., 111.,
 #       110.,  32., 116., 101., 115., 116.,  32.,  52., 171., 238., 229.,
 #       206., 113.,  68., 207.,  42.,  73., 122., 207.,  87., 248.,  54.,
@@ -349,5 +412,4 @@ to do:
 when we know the locations of the errors, the error correction capacity is doubled.
 with jpeg cropping we will always know where the errors are as they will be unable to be read
 when attempting to read the message embedding path so add the functionality to action on this!
-
 """
