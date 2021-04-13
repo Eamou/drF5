@@ -488,12 +488,18 @@ class decoder:
     def fixMancErrors(self, y, diff_manc):
         diff_manc = ''.join([str(x) for x in diff_manc])
         r = ''.join([str(x) for x in self.diffMancEnc(y)])
-        diff = format(int(r,2) ^ int(diff_manc,2), '0'+str(len(diff_manc))+'b')
+        diff = list(format(int(r,2) ^ int(diff_manc,2), '0'+str(len(diff_manc))+'b'))
+        #print("r:", r, "\n","dm: ", diff_manc,"\n", "diff:", diff)
         i = 0
-        while i < len(diff)-1:
-            if diff[i] + diff[i+1] == '11':
-                y[i] *= -1 #what if it's zero?
+        while i < len(diff):
+            if diff[i] == '1':
+                y[i] *= -1
+                try:
+                    diff[i+1] = '1' if diff[i+1] == '0' else '0'
+                except:
+                    break
             i += 1
+        #print("FIXED:",y)
         return y
 
     def extractOptimaldmcss(self, msg_path, parity, img):
@@ -520,11 +526,12 @@ class decoder:
         y_polys = [y[j:j+rs_obj.K] for j in range(0, len(y), rs_obj.K)]
         corrected_y = list()
         for k, poly in enumerate(y_polys): # only need to correct 0s
-            full_poly = poly + parity[k]
+            full_poly = list(np.absolute(poly)) + parity[k]
             zero_mask = [coef==0 for coef in full_poly]
             err_ind = np.where(np.array(zero_mask) == True)[0]
             if len(err_ind) != 0 and len(err_ind) <= (2*rs_obj.T):
-                full_poly = rs_obj.detectErasures(full_poly, err_ind)
+                full_poly = rs_obj.detectErasures(full_poly, err_ind) #nah cuz if rest is wrong, fucks up others.
+            #print(full_poly)
             corrected_y += full_poly[:-(rs_obj.N-rs_obj.K)] # wrap coefs instead of signs?
         # now have lossy dct coefs + differentia manchester
         y = self.fixMancErrors(corrected_y, diff_manc)
@@ -849,8 +856,8 @@ class decoder:
                     message += ''.join([chr(x) for x in corrected_message[:len(corrected_message)-(rs_obj.T*2)]])
             else:
                 message = self.extractMsgTxt(message)
-                print("non-rs extracted message:", message)
-            #return message
+                #print("non-rs extracted message:", message)
+            return message
             with open(output_file+".txt", 'w', encoding="utf-8") as f:
                 f.write(message)
             print("message extracted successfully")
